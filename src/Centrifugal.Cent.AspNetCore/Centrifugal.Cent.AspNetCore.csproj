@@ -5,6 +5,7 @@
     <RootNamespace>Centrifugal.Cent.AspNetCore</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsAotCompatible>true</IsAotCompatible>
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
 
     <PackageId>Centrifugal.Cent.AspNetCore</PackageId>
     <Version>0.1.0</Version>

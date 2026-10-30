@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Publishing, broadcasting with retries, batches and errors: dotnet run against a local Centrifugo. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Centrifugal.Cent/Centrifugal.Cent.csproj" />
+  </ItemGroup>
+</Project>

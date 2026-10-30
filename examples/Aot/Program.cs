@@ -12,6 +12,7 @@ var command = Command.Publish(new PublishRequest
 {
     Channel = "news",
     Data = RawJson.Serialize(new Message("hello"), AppJsonContext.Default.Message),
+    Tags = new Dictionary<string, string> { ["source"] = "aot" },
 });
 Console.WriteLine(command.ToJson());
 Console.WriteLine(Command.Publish(new PublishRequest { Channel = "news", Data = new JsonObject { ["text"] = "node" } }).ToJson());

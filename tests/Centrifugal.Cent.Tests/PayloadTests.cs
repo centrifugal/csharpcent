@@ -60,6 +60,39 @@ public sealed class PayloadTests
         Assert.Equal("1.5", await SentData(1.5));
     }
 
+    [Fact]
+    public async Task MapsAreSentAndRead()
+    {
+        var fake = new FakeCentrifugo(_ => Answer.Ok("""{"result":{"nodes":[{"uid":"n","metrics":{"interval":60,"items":{"a.b":1.5}}}]}}"""));
+        await using var client = fake.CreateClient();
+        await client.PublishAsync(new PublishRequest { Channel = "c", Data = new Dictionary<string, int> { ["k"] = 1 }, Tags = new Dictionary<string, string> { ["t"] = "v" } }, Ct);
+        Assert.Equal("""{"k":1}""", fake.Requests[0].Json.GetProperty("data").GetRawText());
+        Assert.Equal("""{"t":"v"}""", fake.Requests[0].Json.GetProperty("tags").GetRawText());
+        var info = await client.InfoAsync(new InfoRequest(), Ct);
+        Assert.Equal(1.5, info.Nodes[0].Metrics!.Items["a.b"]);
+    }
+
+    // Without its own key methods, a string converter reads and writes map keys only with
+    // System.Text.Json's reflection-based converters, loaded once something in the process
+    // used reflection: never in a native AOT app, not before the first payload elsewhere.
+    // These tests always load them, so they check the methods are the converter's own.
+    [Theory]
+    [InlineData(nameof(JsonConverter<string>.ReadAsPropertyName))]
+    [InlineData(nameof(JsonConverter<string>.WriteAsPropertyName))]
+    public void MapKeysAreTheStrictConvertersOwn(string method) =>
+        Assert.Equal(typeof(StrictStringConverter), typeof(StrictStringConverter).GetMethod(method)!.DeclaringType);
+
+    [Fact]
+    public async Task AMapKeyWithAnUnpairedSurrogateIsRefused()
+    {
+        var fake = new FakeCentrifugo();
+        await using var client = fake.CreateClient();
+        var e = await Assert.ThrowsAsync<CentInvalidRequestException>(() =>
+            client.PublishAsync(new PublishRequest { Channel = "c", Data = 1, Tags = new Dictionary<string, string> { ["\ud800"] = "v" } }, Ct));
+        Assert.Contains("unpaired surrogate", e.Message, StringComparison.Ordinal);
+        Assert.Empty(fake.Requests);
+    }
+
     [Theory]
     [MemberData(nameof(Refused))]
     public async Task InvalidPayloadsAreRefusedBeforeSending(object payload, string message)

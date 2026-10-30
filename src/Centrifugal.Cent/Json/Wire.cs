@@ -141,6 +141,16 @@ internal sealed class StrictStringConverter : JsonConverter<string>
         writer.WriteStringValue(value);
     }
 
+    // Map keys - tags, metrics, a payload's dictionary - are strings too.
+    public override string ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        reader.GetString()!;
+
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+    {
+        Check(value);
+        writer.WritePropertyName(value);
+    }
+
     public static void Check(string value)
     {
         for (var i = 0; i < value.Length; i++)

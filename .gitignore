@@ -186,6 +186,8 @@ DocProject/Help/html
 
 # Click-Once directory
 publish/
+# ...but not the example of publishing, matched on case-insensitive file systems
+!examples/Publish/
 
 # Publish Web Output
 *.[Pp]ublish.xml

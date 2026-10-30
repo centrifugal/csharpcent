@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,props,csproj,targets,xml,slnx}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Names follow the spec's words - an Error of a pending command, a Command - which are
+# keywords of no language the SDK targets but VB's.
+dotnet_diagnostic.CA1716.severity = none
+# The SDK's exceptions take the constructors their meaning needs, not the four standard ones.
+dotnet_diagnostic.CA1032.severity = none
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+dotnet_style_qualification_for_field = false:warning
+
+[**/Generated/*.g.cs]
+generated_code = true

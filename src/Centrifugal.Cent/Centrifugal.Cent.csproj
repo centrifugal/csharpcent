@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>Centrifugal.Cent</RootNamespace>
+    <AssemblyName>Centrifugal.Cent</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <PackageId>Centrifugal.Cent</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Centrifugal Labs</Authors>
+    <Company>Centrifugal Labs</Company>
+    <Copyright>Copyright (c) 2026 Centrifugal Labs LTD</Copyright>
+    <Description>Centrifugo server API SDK for .NET: the HTTP API client with broadcasts, batches and automatic batching; connection, subscription and API tokens with JWKS; proxy handlers and the endpoints client SDKs call.</Description>
+    <PackageTags>centrifugo;centrifuge;real-time;websocket;pubsub;jwt;server-api</PackageTags>
+    <PackageProjectUrl>https://github.com/centrifugal/csharpcent</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/centrifugal/csharpcent</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Centrifugal.Cent.Tests" />
+    <InternalsVisibleTo Include="Centrifugal.Cent.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

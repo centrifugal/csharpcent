@@ -1,0 +1,86 @@
+# Publishes a release when a maintainer pushes a `vX.Y.Z` tag, as in
+# centrifuge-csharp (CONTRIBUTING.md, "Releases"). The version in the
+# projects is bumped beforehand in a normal commit on main.
+#
+# 1. Checks the tag names the packages' version.
+# 2. Builds, tests and packs Centrifugal.Cent and Centrifugal.Cent.AspNetCore.
+# 3. Pushes them to NuGet with Trusted Publishing: the job's OIDC token buys a
+#    one-hour API key, so no long-lived key is stored anywhere. A version
+#    already on NuGet is skipped, so a rerun after a failure completes the
+#    release.
+# 4. Creates the GitHub release with the packages and generated notes, unless
+#    the maintainer already created it.
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  CI: "true"
+
+jobs:
+  release:
+    name: Release
+    if: github.repository_owner == 'centrifugal'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # NuGet Trusted Publishing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Check the tag
+        run: |
+          set -eu
+          for p in src/Centrifugal.Cent/Centrifugal.Cent.csproj src/Centrifugal.Cent.AspNetCore/Centrifugal.Cent.AspNetCore.csproj; do
+            version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$p")
+            if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+              echo "::error::tag $GITHUB_REF_NAME, but $p is $version"
+              exit 1
+            fi
+          done
+
+      - run: dotnet build Centrifugal.Cent.slnx -c Release
+      - run: dotnet test --project tests/Centrifugal.Cent.Tests -c Release --no-build
+      - run: dotnet pack src/Centrifugal.Cent -c Release --no-build -o artifacts
+      - run: dotnet pack src/Centrifugal.Cent.AspNetCore -c Release --no-build -o artifacts
+
+      # The trusted publishing policy of the nuget.org account FZambia names this
+      # repository, release.yml and the release environment.
+      - name: Log in to NuGet
+        id: nuget
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: FZambia
+
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists"
+            gh release upload "$GITHUB_REF_NAME" artifacts/*.nupkg --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes artifacts/*.nupkg
+          fi

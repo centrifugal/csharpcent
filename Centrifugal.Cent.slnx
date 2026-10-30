@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/Aot/Aot.csproj" />
+    <Project Path="examples/Backend/Backend.csproj" />
+    <Project Path="examples/Publish/Publish.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Centrifugal.Cent.AspNetCore/Centrifugal.Cent.AspNetCore.csproj" />
+    <Project Path="src/Centrifugal.Cent/Centrifugal.Cent.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Centrifugal.Cent.Tests/Centrifugal.Cent.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Generator/Generator.csproj" />
+  </Folder>
+</Solution>

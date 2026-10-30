@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RootNamespace>Centrifugal.Cent.AspNetCore</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <PackageId>Centrifugal.Cent.AspNetCore</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Centrifugal Labs</Authors>
+    <Company>Centrifugal Labs</Company>
+    <Copyright>Copyright (c) 2026 Centrifugal Labs LTD</Copyright>
+    <Description>ASP.NET Core integration of Centrifugal.Cent, the Centrifugo server API SDK: serves its proxy handlers, client SDK endpoints and JWKS endpoints, and registers its client.</Description>
+    <PackageTags>centrifugo;centrifuge;real-time;aspnetcore;proxy;jwt</PackageTags>
+    <PackageProjectUrl>https://github.com/centrifugal/csharpcent</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/centrifugal/csharpcent</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EnablePackageValidation>true</EnablePackageValidation>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="../Centrifugal.Cent/Centrifugal.Cent.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../icon.png" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

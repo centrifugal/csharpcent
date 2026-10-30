@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!-- An ASP.NET Core backend for Centrifugo: proxy handlers, a connection token endpoint, JWKS, publishing. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Centrifugal.Cent.AspNetCore/Centrifugal.Cent.AspNetCore.csproj" />
+  </ItemGroup>
+</Project>

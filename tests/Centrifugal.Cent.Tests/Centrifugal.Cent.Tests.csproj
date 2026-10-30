@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Every framework the packages target. Without the .NET 8 runtime - locally, say -
+         the net8.0 build runs on the newest one. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <RollForward>Major</RollForward>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Centrifugal.Cent.Tests</RootNamespace>
+    <!-- Tests are not public API: no docs, and names read as sentences. -->
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA2007;CA1861;CA5394;CA1849;CA2000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Centrifugal.Cent/Centrifugal.Cent.csproj" />
+    <ProjectReference Include="../../src/Centrifugal.Cent.AspNetCore/Centrifugal.Cent.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

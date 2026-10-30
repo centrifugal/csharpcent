@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.png binary
+# Generated: diffs collapsed in reviews, never edited.
+**/Generated/*.g.cs linguist-generated=true

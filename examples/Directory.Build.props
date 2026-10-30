@@ -1,0 +1,10 @@
+<Project>
+  <Import Project="../Directory.Build.props" />
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- Not shipped; the AOT example's restore depends on the platform. -->
+    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
+    <!-- Examples read as documentation: console output and simple names are fine. -->
+    <NoWarn>$(NoWarn);CA1303;CA1515;CA2007;CA1031;CA1812;CA1852;CA1848</NoWarn>
+  </PropertyGroup>
+</Project>

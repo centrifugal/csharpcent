@@ -1,0 +1,171 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  CI: "true"
+
+jobs:
+  # Formatting, the analyzers (warnings are errors), and the generated code.
+  check:
+    name: format, analyzers, generated code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: dotnet restore Centrifugal.Cent.slnx --locked-mode
+      - run: dotnet format Centrifugal.Cent.slnx --verify-no-changes --no-restore
+      - run: dotnet build Centrifugal.Cent.slnx -c Release --no-restore
+      - name: Generated code is current
+        run: dotnet run --project tools/Generator -c Release --no-build -- --check
+
+  # Unit and network tests on every OS and every framework the packages target.
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+      - run: dotnet test --project tests/Centrifugal.Cent.Tests -c Release -- --coverage --coverage-output-format cobertura
+      - if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: tests/Centrifugal.Cent.Tests/bin/Release/*/TestResults/*.cobertura.xml
+          retention-days: 14
+
+  # Automatic batching under random concurrency, repeated.
+  stress:
+    name: automatic batching stress
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: |
+          for i in $(seq 20); do
+            dotnet test --project tests/Centrifugal.Cent.Tests -c Release -- --filter-class Centrifugal.Cent.Tests.AutoBatchTests || exit 1
+          done
+
+  # The proxy tests' backend runs on the runner, which Centrifugo reaches as
+  # host.docker.internal.
+  integration:
+    name: integration (Centrifugo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Start Centrifugo
+        run: |
+          docker run -d --name centrifugo -p 8100:8100 \
+            --add-host=host.docker.internal:host-gateway \
+            -e CENTRIFUGO_HEALTH_ENABLED=true \
+            -v "$PWD/testdata/centrifugo.json:/centrifugo/config.json:ro" \
+            centrifugo/centrifugo:v6.10.2 centrifugo -c /centrifugo/config.json
+          for _ in $(seq 60); do curl -sf localhost:8100/health && exit 0; sleep 1; done
+          docker logs centrifugo; exit 1
+      - run: dotnet test --project tests/Centrifugal.Cent.Tests -c Release --max-parallel-test-modules 1 -- --filter-class Centrifugal.Cent.Tests.IntegrationTests
+        env:
+          CENTRIFUGO_TESTS: "1"
+      - if: failure()
+        run: docker logs --tail 200 centrifugo
+
+  # Against Centrifugo PRO, with Redis and PostgreSQL: the setup
+  # testdata/centrifugo-pro.compose.yml also runs locally. CSHARPCENT_TEST_PRO
+  # fails the PRO tests, rather than skipping them, if the server is not PRO.
+  # The tests use Centrifugo PRO in sandbox mode, without a license key.
+  # Centrifugo PRO is commercial software, under the Centrifugal Labs License
+  # Agreement (https://centrifugal.dev/license), not csharpcent's MIT license.
+  integration-pro:
+    name: integration (Centrifugo PRO)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: docker compose -f testdata/centrifugo-pro.compose.yml up -d --wait
+      - run: dotnet test --project tests/Centrifugal.Cent.Tests -c Release --max-parallel-test-modules 1 -- --filter-class Centrifugal.Cent.Tests.IntegrationTests
+        env:
+          CENTRIFUGO_TESTS: "1"
+          CSHARPCENT_TEST_PRO: "1"
+      - if: failure()
+        run: docker compose -f testdata/centrifugo-pro.compose.yml logs --tail 200
+
+  # The SDK in a native AOT application: any trimming or AOT warning fails it.
+  aot:
+    name: native AOT
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: dotnet publish examples/Aot -c Release -p:TreatWarningsAsErrors=true -o aot
+      - run: ./aot/Aot
+
+  # The packages as they will be published, validated across their frameworks.
+  pack:
+    name: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - run: dotnet pack src/Centrifugal.Cent -c Release -o artifacts
+      - run: dotnet pack src/Centrifugal.Cent.AspNetCore -c Release -o artifacts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packages
+          path: artifacts/
+          retention-days: 14
+
+  # One required check for branch protection, independent of the job list above.
+  ci-success:
+    name: CI success
+    if: always()
+    needs: [check, test, stress, integration, integration-pro, aot, pack]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

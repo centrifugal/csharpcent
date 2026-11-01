@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - run: dotnet restore Centrifugal.Cent.slnx --locked-mode
+      - run: dotnet restore Centrifugal.Cent.slnx
       - run: dotnet format Centrifugal.Cent.slnx --verify-no-changes --no-restore
       - run: dotnet build Centrifugal.Cent.slnx -c Release --no-restore
       - name: Generated code is current

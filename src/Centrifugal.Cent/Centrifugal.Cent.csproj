@@ -6,7 +6,6 @@
     <AssemblyName>Centrifugal.Cent</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsAotCompatible>true</IsAotCompatible>
-    <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
 
     <PackageId>Centrifugal.Cent</PackageId>
     <Version>0.1.0</Version>

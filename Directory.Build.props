@@ -9,10 +9,5 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
-    <!-- Lock files: CI restores exactly what was reviewed. The packages turn them
-         off: they have no dependencies to lock, only the SDK's implicit
-         Microsoft.NET.ILLink.Tasks, whose version changes with every SDK patch. -->
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
   </PropertyGroup>
 </Project>

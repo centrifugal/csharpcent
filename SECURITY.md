@@ -21,7 +21,7 @@ We will acknowledge the report and assess it promptly. Fixed vulnerabilities are
 
 ## How we detect vulnerabilities
 
-- `dotnet restore` audits every package against the GitHub Advisory Database, and CI restores in locked mode from the committed lock files.
+- `dotnet restore` audits every package against the GitHub Advisory Database. Every package version is pinned exactly in `Directory.Packages.props`; the published packages depend on none.
 - Dependabot keeps packages and GitHub Actions current.
 - Every GitHub action is pinned to a commit SHA.
 - `Centrifugal.Cent` depends on nothing but .NET: cryptography is the platform's, and Ed25519 comes from a library of the application's choice.

@@ -101,7 +101,6 @@ public sealed class TokenTests
         var sub = Token.Subscription(SigningKey.Hmac("s"), new SubscriptionClaims
         {
             Channel = "c",
-            Client = "a1b2",
             Expiry = Expiry.Never,
             SubscriptionExpiry = Expiry.At(Exp),
             IssuedAt = Iat,
@@ -109,7 +108,7 @@ public sealed class TokenTests
             B64Info = "AQ==",
             Allow = ["pub"],
         });
-        Assert.Equal("""{"sub":"","iat":1700000000,"channel":"c","client":"a1b2","expire_at":1700003600,"b64info":"AQ==","data":"x","allow":["pub"]}""", Claims(sub).GetRawText());
+        Assert.Equal("""{"sub":"","iat":1700000000,"channel":"c","expire_at":1700003600,"b64info":"AQ==","data":"x","allow":["pub"]}""", Claims(sub).GetRawText());
     }
 
     [Fact]

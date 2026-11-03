@@ -48,8 +48,7 @@ synced again from the tag before this version is released.
   fails with code 112 rather than mixing two states.
 - `Position` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
   `MapReadStreamResult`: the `StreamPosition` which `HistoryRequest.Since` takes.
-- `SubscriptionClaims.Client`, binding a subscription token to one connection,
-  and `ConnectionClaims.Profile`, Centrifugo PRO's compression profile.
+- `ConnectionClaims.Profile`, Centrifugo PRO's compression profile.
 - `ConnectResult.Profile` in the connect proxy's result (Centrifugo PRO).
 
 ### Fixed

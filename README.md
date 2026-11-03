@@ -169,6 +169,33 @@ in included - and its end throws `CentTimeoutException`. A call's
 var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
 ```
 
+## Pages and stream positions
+
+`HistoryAllAsync`, `DeviceListAllAsync`, `DeviceTopicListAllAsync`,
+`UserTopicListAllAsync` and `MapReadStateAllAsync` give every item of a paged
+method as an `IAsyncEnumerable`, reading a page when the iteration reaches it:
+leaving the loop reads no further page, and a failed call ends it with its
+exception. The request's `Limit` is the page size. Items changing while
+iterating - a device registered, an entry updated - may or may not be seen.
+
+The results holding a stream position - publish, history, map read state and
+map read stream - give it as a `StreamPosition`, `result.Position`, which is what
+`HistoryRequest.Since` takes. Reading what came after a publication:
+
+```csharp
+var published = await client.PublishAsync("news", data, ct);
+// ...
+await foreach (var publication in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
+{
+    Handle(publication);
+}
+```
+
+`HistoryAllAsync` reads oldest first, so it refuses `Reverse`, and a `Limit`
+below 1, before sending anything. A position whose epoch is no longer the
+stream's fails with `ErrorCodes.UnrecoverablePosition` (112): the stream was
+reset - Redis restarted, say - and reading from its start is the only way on.
+
 ## Errors
 
 A call returns its result only when it did everything asked, and throws a

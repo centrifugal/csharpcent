@@ -185,8 +185,8 @@ public sealed partial class BroadcastRequest
 public sealed partial class FilterNode
 {
     /// <summary>
-    /// Op is the logical operation of a non-leaf node: "and", "or" or "not".
-    /// Empty for a leaf node.
+    /// Op is the logical operation of a non-leaf node. Empty for a leaf node.
+    /// One of: and, or, not.
     /// </summary>
     [JsonPropertyName("op")]
     public string? Op { get; set; }
@@ -198,8 +198,8 @@ public sealed partial class FilterNode
     public string? Key { get; set; }
 
     /// <summary>
-    /// Cmp is the comparison of a leaf node: "eq", "neq", "in", "nin", "ex",
-    /// "nex", "sw", "ew", "ct", "gt", "gte", "lt" or "lte".
+    /// Cmp is the comparison of a leaf node. One of: eq, neq, in, nin, ex, nex,
+    /// sw, ew, ct, gt, gte, lt, lte.
     /// </summary>
     [JsonPropertyName("cmp")]
     public string? Cmp { get; set; }
@@ -1381,8 +1381,8 @@ public sealed partial class DeviceRegisterRequest
     public string? Id { get; set; }
 
     /// <summary>
-    /// Provider is the provider of the device token: fcm, hms, apns or
-    /// webpush. Required.
+    /// Provider is the provider of the device token. Required. One of: fcm,
+    /// hms, apns, webpush.
     /// </summary>
     [JsonPropertyName("provider")]
     public required string Provider { get; set; }
@@ -1395,7 +1395,7 @@ public sealed partial class DeviceRegisterRequest
     public required string Token { get; set; }
 
     /// <summary>
-    /// Platform is the device platform: ios, android or web. Required.
+    /// Platform is the device platform. Required. One of: ios, android, web.
     /// </summary>
     [JsonPropertyName("platform")]
     public required string Platform { get; set; }
@@ -1559,7 +1559,7 @@ public sealed partial class DeviceMetaUpdate
 public sealed partial class DeviceTopicsUpdate
 {
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -1811,7 +1811,7 @@ public sealed partial class DeviceTopicUpdateRequest
     public required string DeviceId { get; set; }
 
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -1845,7 +1845,7 @@ public sealed partial class UserTopicUpdateRequest
     public required string User { get; set; }
 
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -2210,6 +2210,7 @@ public sealed partial class PushNotification
     /// <summary>
     /// ExpireAt is the Unix time in seconds when Centrifugo stops trying to
     /// send the notification. Not related to the providers' TTL fields.
+    /// Required when the request sets limit_strategy.
     /// </summary>
     [JsonPropertyName("expire_at")]
     public long ExpireAt { get; set; }
@@ -2327,7 +2328,8 @@ public sealed partial class SendPushNotificationRequest
     /// <summary>
     /// LimitStrategy sets time constraints and rate limits. Only applies
     /// with a filter recipient; devices are then processed one by one
-    /// instead of in batches.
+    /// instead of in batches. Needs notification.expire_at: a push the limits
+    /// hold back is not tried forever.
     /// </summary>
     [JsonPropertyName("limit_strategy")]
     public PushLimitStrategy? LimitStrategy { get; set; }
@@ -2493,8 +2495,8 @@ public sealed partial class UpdatePushStatusRequest
     public required string AnalyticsUid { get; set; }
 
     /// <summary>
-    /// Status is the status of the push notification: delivered or
-    /// interacted. Required.
+    /// Status is the status of the push notification. Required. One of:
+    /// delivered, interacted.
     /// </summary>
     [JsonPropertyName("status")]
     public required string Status { get; set; }
@@ -2630,9 +2632,9 @@ public sealed partial class MapPublishRequest
     public long Score { get; set; }
 
     /// <summary>
-    /// KeyMode makes the publish conditional: "if_new" writes only if the
-    /// key does not exist, "if_exists" only if it exists. Empty always
-    /// writes.
+    /// KeyMode makes the publish conditional: if_new writes only if the key
+    /// does not exist, if_exists only if it exists. Empty always writes.
+    /// One of: if_new, if_exists.
     /// </summary>
     [JsonPropertyName("key_mode")]
     public string? KeyMode { get; set; }

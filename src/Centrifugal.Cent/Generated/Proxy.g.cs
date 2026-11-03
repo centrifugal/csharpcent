@@ -22,7 +22,7 @@ namespace Centrifugal.Cent.Proxy;
 public sealed partial class FilterNode
 {
     /// <summary>
-    /// Op is the logical operation: "and", "or" or "not". Empty for a leaf node.
+    /// Op is the logical operation. Empty for a leaf node. One of: and, or, not.
     /// </summary>
     [JsonPropertyName("op")]
     public string? Op { get; set; }
@@ -34,9 +34,9 @@ public sealed partial class FilterNode
     public string? Key { get; set; }
 
     /// <summary>
-    /// Cmp is the comparison of a leaf node: "eq", "neq", "in", "nin", "ex"
-    /// (exists), "nex" (does not exist), "sw" (starts with), "ew" (ends with), "ct"
-    /// (contains), "gt", "gte", "lt" or "lte".
+    /// Cmp is the comparison of a leaf node: ex is exists, nex does not exist,
+    /// sw starts with, ew ends with, ct contains. One of: eq, neq, in, nin, ex,
+    /// nex, sw, ew, ct, gt, gte, lt, lte.
     /// </summary>
     [JsonPropertyName("cmp")]
     public string? Cmp { get; set; }
@@ -131,14 +131,15 @@ public sealed partial class ConnectRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -327,6 +328,14 @@ public sealed partial class ConnectResult
     /// </summary>
     [JsonPropertyName("labels")]
     public IDictionary<string, string>? Labels { get; set; }
+
+    /// <summary>
+    /// Profile assigns the connection to a dictionary compression profile, as the
+    /// profile claim of a connection token does: it overrides the profile the
+    /// client declared. Centrifugo PRO only.
+    /// </summary>
+    [JsonPropertyName("profile")]
+    public string? Profile { get; set; }
 }
 
 /// <summary>
@@ -343,15 +352,15 @@ public sealed partial class ChannelsCapability
     public IList<string>? Channels { get; set; }
 
     /// <summary>
-    /// Allow are the operations it grants: "sub" (subscribe), "pub" (publish),
-    /// "hst" (history) and "prs" (presence).
+    /// Allow are the operations it grants: sub is subscribe, pub publish, hst
+    /// history, prs presence. One of: sub, pub, hst, prs.
     /// </summary>
     [JsonPropertyName("allow")]
     public IList<string>? Allow { get; set; }
 
     /// <summary>
-    /// Match is how channels are matched: empty for exact names, "wildcard" or
-    /// "regex".
+    /// Match is how channels are matched: empty for exact names. One of:
+    /// wildcard, regex.
     /// </summary>
     [JsonPropertyName("match")]
     public string? Match { get; set; }
@@ -375,14 +384,15 @@ public sealed partial class RefreshRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -470,14 +480,15 @@ public sealed partial class SubscribeRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -620,8 +631,8 @@ public sealed partial class SubscribeResult
     public SubscribeOptionOverride? Override { get; set; }
 
     /// <summary>
-    /// Allow are capabilities granted in the channel for this subscription:
-    /// "sub", "pub", "hst" and "prs". Centrifugo PRO only.
+    /// Allow are capabilities granted in the channel for this subscription.
+    /// Centrifugo PRO only. One of: sub, pub, hst, prs.
     /// </summary>
     [JsonPropertyName("allow")]
     public IList<string>? Allow { get; set; }
@@ -652,14 +663,15 @@ public sealed partial class PublishRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -784,14 +796,15 @@ public sealed partial class MapPublishRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -882,8 +895,9 @@ public sealed partial class MapPublishResult
     public long Score { get; set; }
 
     /// <summary>
-    /// KeyMode makes the publication conditional: "if_new" publishes only a key
-    /// which does not exist yet, "if_exists" only one which does.
+    /// KeyMode makes the publication conditional: if_new publishes only a key
+    /// which does not exist yet, if_exists only one which does.
+    /// One of: if_new, if_exists.
     /// </summary>
     [JsonPropertyName("key_mode")]
     public string? KeyMode { get; set; }
@@ -946,14 +960,15 @@ public sealed partial class MapRemoveRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -1036,14 +1051,15 @@ public sealed partial class RpcRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -1125,14 +1141,15 @@ public sealed partial class SubRefreshRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -1261,9 +1278,9 @@ public sealed partial class ChannelEvent
     public string Channel { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Type is "occupied" when the channel got its first subscriber, "vacated"
+    /// Type is occupied when the channel got its first subscriber, vacated
     /// when it lost its last one. More types may come; the field is a string,
-    /// not an enum, for JSON interoperability.
+    /// not an enum, for JSON interoperability. One of: occupied, vacated.
     /// </summary>
     [JsonPropertyName("type")]
     public string Type { get; init => field = value ?? ""; } = "";

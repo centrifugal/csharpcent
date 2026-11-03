@@ -3844,3 +3844,143 @@ public sealed partial class SharedPollPublishRequest : IWireMessage
 public sealed partial class SharedPollPublishResult
 {
 }
+
+/// <summary>
+/// The values of the op field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class FilterNodeOpValues
+{
+    /// <summary><c>and</c>.</summary>
+    public const string And = "and";
+
+    /// <summary><c>or</c>.</summary>
+    public const string Or = "or";
+
+    /// <summary><c>not</c>.</summary>
+    public const string Not = "not";
+}
+
+/// <summary>
+/// The values of the op field of DeviceTopicsUpdate, DeviceTopicUpdateRequest and
+/// UserTopicUpdateRequest. The field is a string: a value Centrifugo sends or accepts which
+/// these do not name is still a valid one.
+/// </summary>
+public static class OpValues
+{
+    /// <summary><c>add</c>.</summary>
+    public const string Add = "add";
+
+    /// <summary><c>remove</c>.</summary>
+    public const string Remove = "remove";
+
+    /// <summary><c>set</c>.</summary>
+    public const string Set = "set";
+}
+
+/// <summary>
+/// The values of the cmp field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class CmpValues
+{
+    /// <summary><c>eq</c>.</summary>
+    public const string Eq = "eq";
+
+    /// <summary><c>neq</c>.</summary>
+    public const string Neq = "neq";
+
+    /// <summary><c>in</c>.</summary>
+    public const string In = "in";
+
+    /// <summary><c>nin</c>.</summary>
+    public const string Nin = "nin";
+
+    /// <summary><c>ex</c>.</summary>
+    public const string Ex = "ex";
+
+    /// <summary><c>nex</c>.</summary>
+    public const string Nex = "nex";
+
+    /// <summary><c>sw</c>.</summary>
+    public const string Sw = "sw";
+
+    /// <summary><c>ew</c>.</summary>
+    public const string Ew = "ew";
+
+    /// <summary><c>ct</c>.</summary>
+    public const string Ct = "ct";
+
+    /// <summary><c>gt</c>.</summary>
+    public const string Gt = "gt";
+
+    /// <summary><c>gte</c>.</summary>
+    public const string Gte = "gte";
+
+    /// <summary><c>lt</c>.</summary>
+    public const string Lt = "lt";
+
+    /// <summary><c>lte</c>.</summary>
+    public const string Lte = "lte";
+}
+
+/// <summary>
+/// The values of the provider field of DeviceRegisterRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class ProviderValues
+{
+    /// <summary><c>fcm</c>.</summary>
+    public const string Fcm = "fcm";
+
+    /// <summary><c>hms</c>.</summary>
+    public const string Hms = "hms";
+
+    /// <summary><c>apns</c>.</summary>
+    public const string Apns = "apns";
+
+    /// <summary><c>webpush</c>.</summary>
+    public const string WebPush = "webpush";
+}
+
+/// <summary>
+/// The values of the platform field of DeviceRegisterRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class PlatformValues
+{
+    /// <summary><c>ios</c>.</summary>
+    public const string IOS = "ios";
+
+    /// <summary><c>android</c>.</summary>
+    public const string Android = "android";
+
+    /// <summary><c>web</c>.</summary>
+    public const string Web = "web";
+}
+
+/// <summary>
+/// The values of the status field of UpdatePushStatusRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class StatusValues
+{
+    /// <summary><c>delivered</c>.</summary>
+    public const string Delivered = "delivered";
+
+    /// <summary><c>interacted</c>.</summary>
+    public const string Interacted = "interacted";
+}
+
+/// <summary>
+/// The values of the key_mode field of MapPublishRequest. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class KeyModeValues
+{
+    /// <summary><c>if_new</c>.</summary>
+    public const string IfNew = "if_new";
+
+    /// <summary><c>if_exists</c>.</summary>
+    public const string IfExists = "if_exists";
+}

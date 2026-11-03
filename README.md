@@ -51,9 +51,14 @@ Console.WriteLine(result.Offset);
 Create one client per process and share it: it is safe for concurrent use and
 keeps its connections alive. Every API method is a method of the client taking
 its request - `PublishAsync`, `PresenceAsync`, `HistoryAsync`... - with all the
-method's fields; a request's fields the protos mark required are `required`
-members, so the compiler says when one is missing. Publish and broadcast also
-have short forms taking the channel and data:
+method's fields. A request's fields the protos mark required are `required`
+members, so the compiler says when one is missing; one set to `null`, `""` or
+`0` - which go out as the field left unset - fails before sending with
+`CentInvalidRequestException` naming it, nested ones included
+(`LimitStrategy.RateLimit.Policies[0].Rate is required`). A field whose empty
+value has a meaning is not checked: `InvalidateUserTokensRequest.User`, where
+empty means anonymous users. Publish and broadcast also have short forms taking
+the channel and data:
 
 ```csharp
 await client.PublishAsync(new PublishRequest { Channel = "news", Data = data, IdempotencyKey = key, SkipHistory = true });
@@ -76,6 +81,37 @@ builder.Services.AddCentClient(builder.Configuration.GetSection("Centrifugo"));
     "AutoBatch": { "MaxInFlight": 32 }
   }
 }
+```
+
+A string field with a fixed set of values has a constant per value, generated
+from the protos: `ProviderValues.Fcm`, `PlatformValues.IOS`, `OpValues.Add`,
+`StatusValues.Delivered`, `KeyModeValues.IfNew`, `CmpValues.Eq`,
+`FilterNodeOpValues.And`, and in the proxy `EncodingValues.Binary`,
+`TypeValues.Occupied` and the rest. The fields stay strings: a value Centrifugo
+adds is sent before the SDK names it.
+
+```csharp
+await client.DeviceRegisterAsync(new DeviceRegisterRequest
+{
+    Provider = ProviderValues.Fcm,
+    Platform = PlatformValues.Android,
+    Token = fcmToken,
+    User = "42",
+});
+```
+
+`device_update`'s updates are sent whenever they are set, even empty: an empty
+`UserUpdate` detaches the devices from their user, an empty `TimezoneUpdate`,
+`LocaleUpdate` or `MetaUpdate` clears the setting, and one left `null` changes
+nothing. Any other message in a request whose fields are all empty is left out,
+as an empty field is.
+
+```csharp
+await client.DeviceUpdateAsync(new DeviceUpdateRequest
+{
+    Users = ["42"],
+    TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "" }, // clears it
+});
 ```
 
 What configuration cannot hold - a bearer token function, say - goes in a

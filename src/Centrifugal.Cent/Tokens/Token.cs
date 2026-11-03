@@ -145,10 +145,16 @@ public sealed class ChannelsCapability
     /// <summary>The channels, or channel patterns, it applies to.</summary>
     public IReadOnlyList<string> Channels { get; init; } = [];
 
-    /// <summary>The operations it grants: <c>sub</c> (subscribe), <c>pub</c> (publish), <c>hst</c> (history), <c>prs</c> (presence).</summary>
+    /// <summary>
+    /// The operations it grants: <c>sub</c> (subscribe), <c>pub</c> (publish), <c>hst</c>
+    /// (history), <c>prs</c> (presence) - <see cref="Proxy.AllowValues"/>.
+    /// </summary>
     public IReadOnlyList<string> Allow { get; init; } = [];
 
-    /// <summary>How <see cref="Channels"/> are matched: null for exact names, <c>wildcard</c> or <c>regex</c>.</summary>
+    /// <summary>
+    /// How <see cref="Channels"/> are matched: null for exact names, <c>wildcard</c> or
+    /// <c>regex</c> - <see cref="Proxy.MatchValues"/>.
+    /// </summary>
     public string? Match { get; init; }
 }
 
@@ -197,7 +203,7 @@ public sealed class SubscriptionClaims
     /// <summary>Overrides channel options of the namespace for this subscription.</summary>
     public SubscribeOptionOverride? Override { get; init; }
 
-    /// <summary>Operations allowed in the channel besides subscribing: <c>pub</c>, <c>hst</c>, <c>prs</c>. Centrifugo PRO only.</summary>
+    /// <summary>Operations allowed in the channel besides subscribing: <c>pub</c>, <c>hst</c>, <c>prs</c> - <see cref="Proxy.AllowValues"/>. Centrifugo PRO only.</summary>
     public IReadOnlyList<string>? Allow { get; init; }
 
     /// <summary>Makes the subscription receive only publications whose tags match it. Centrifugo PRO only.</summary>

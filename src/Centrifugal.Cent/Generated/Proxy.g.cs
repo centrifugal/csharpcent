@@ -1559,6 +1559,157 @@ public sealed partial class SharedPollRefreshResultItem : IWireMessage
     string? IWireMessage.Missing() => null;
 }
 
+/// <summary>
+/// The values of the op field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class OpValues
+{
+    /// <summary><c>and</c>.</summary>
+    public const string And = "and";
+
+    /// <summary><c>or</c>.</summary>
+    public const string Or = "or";
+
+    /// <summary><c>not</c>.</summary>
+    public const string Not = "not";
+}
+
+/// <summary>
+/// The values of the cmp field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class CmpValues
+{
+    /// <summary><c>eq</c>.</summary>
+    public const string Eq = "eq";
+
+    /// <summary><c>neq</c>.</summary>
+    public const string Neq = "neq";
+
+    /// <summary><c>in</c>.</summary>
+    public const string In = "in";
+
+    /// <summary><c>nin</c>.</summary>
+    public const string Nin = "nin";
+
+    /// <summary><c>ex</c>.</summary>
+    public const string Ex = "ex";
+
+    /// <summary><c>nex</c>.</summary>
+    public const string Nex = "nex";
+
+    /// <summary><c>sw</c>.</summary>
+    public const string Sw = "sw";
+
+    /// <summary><c>ew</c>.</summary>
+    public const string Ew = "ew";
+
+    /// <summary><c>ct</c>.</summary>
+    public const string Ct = "ct";
+
+    /// <summary><c>gt</c>.</summary>
+    public const string Gt = "gt";
+
+    /// <summary><c>gte</c>.</summary>
+    public const string Gte = "gte";
+
+    /// <summary><c>lt</c>.</summary>
+    public const string Lt = "lt";
+
+    /// <summary><c>lte</c>.</summary>
+    public const string Lte = "lte";
+}
+
+/// <summary>
+/// The values of the protocol field of ConnectRequest, RefreshRequest, SubscribeRequest,
+/// PublishRequest, MapPublishRequest, MapRemoveRequest, RpcRequest and SubRefreshRequest.
+/// The field is a string: a value Centrifugo sends or accepts which these do not name is
+/// still a valid one.
+/// </summary>
+public static class ProtocolValues
+{
+    /// <summary><c>json</c>.</summary>
+    public const string Json = "json";
+
+    /// <summary><c>protobuf</c>.</summary>
+    public const string Protobuf = "protobuf";
+}
+
+/// <summary>
+/// The values of the encoding field of ConnectRequest, RefreshRequest, SubscribeRequest,
+/// PublishRequest, MapPublishRequest, MapRemoveRequest, RpcRequest and SubRefreshRequest.
+/// The field is a string: a value Centrifugo sends or accepts which these do not name is
+/// still a valid one.
+/// </summary>
+public static class EncodingValues
+{
+    /// <summary><c>json</c>.</summary>
+    public const string Json = "json";
+
+    /// <summary><c>binary</c>.</summary>
+    public const string Binary = "binary";
+}
+
+/// <summary>
+/// The values of the allow field of ChannelsCapability and SubscribeResult. The field is a
+/// string: a value Centrifugo sends or accepts which these do not name is still a valid
+/// one.
+/// </summary>
+public static class AllowValues
+{
+    /// <summary><c>sub</c>.</summary>
+    public const string Sub = "sub";
+
+    /// <summary><c>pub</c>.</summary>
+    public const string Pub = "pub";
+
+    /// <summary><c>hst</c>.</summary>
+    public const string Hst = "hst";
+
+    /// <summary><c>prs</c>.</summary>
+    public const string Prs = "prs";
+}
+
+/// <summary>
+/// The values of the match field of ChannelsCapability. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class MatchValues
+{
+    /// <summary><c>wildcard</c>.</summary>
+    public const string Wildcard = "wildcard";
+
+    /// <summary><c>regex</c>.</summary>
+    public const string Regex = "regex";
+}
+
+/// <summary>
+/// The values of the key_mode field of MapPublishResult. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class KeyModeValues
+{
+    /// <summary><c>if_new</c>.</summary>
+    public const string IfNew = "if_new";
+
+    /// <summary><c>if_exists</c>.</summary>
+    public const string IfExists = "if_exists";
+}
+
+/// <summary>
+/// The values of the type field of ChannelEvent. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class TypeValues
+{
+    /// <summary><c>occupied</c>.</summary>
+    public const string Occupied = "occupied";
+
+    /// <summary><c>vacated</c>.</summary>
+    public const string Vacated = "vacated";
+}
+
 [JsonSerializable(typeof(ConnectRequest))]
 [JsonSerializable(typeof(ConnectResult))]
 [JsonSerializable(typeof(RefreshRequest))]

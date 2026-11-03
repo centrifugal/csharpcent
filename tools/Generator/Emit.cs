@@ -475,6 +475,9 @@ internal static class ApiEmitter
     /// </summary>
     private static readonly string[] OmittedCommands = ["rpc"];
 
+    /// <summary>The messages of a batch, naming a command's request and reply types.</summary>
+    private static readonly string[] Envelopes = ["Command", "Reply"];
+
     /// <summary>Requests with rules the client checks before sending (spec 3.5): <c>Validation.{Name}</c>.</summary>
     private static readonly string[] Validated = ["publish", "broadcast"];
 
@@ -527,19 +530,20 @@ internal static class ApiEmitter
 
     private static void Prepare(Schema s) => Names.RenameTypes(s, Names.Type);
 
+    /// <summary>Whether a message of api.proto is a generated type: not one written by hand, an envelope, an omitted command's or a wrapper.</summary>
+    private static bool Emitted(Schema s, string name)
+    {
+        if (Handwritten.Contains(name) || s.Methods.Any(m => m.Response == name) || Cent.Generator.Types.WrapperScalar(s, name) is not null)
+        {
+            return false;
+        }
+        return !Envelopes.Any(c => s.Find(c)!.Fields.Any(f => OmittedCommands.Contains(f.Name) && f.Type == name));
+    }
+
     public static string Types(Schema s, SortedSet<string> required)
     {
         Prepare(s);
         var cmds = Commands(s);
-        var envelopes = s.Methods.Select(m => m.Response).ToHashSet();
-        var omitted = new HashSet<string>();
-        foreach (var name in new[] { "Command", "Reply" })
-        {
-            foreach (var f in s.Find(name)!.Fields.Where(f => OmittedCommands.Contains(f.Name)))
-            {
-                omitted.Add(f.Type);
-            }
-        }
         var inputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Request));
         var outputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Result));
         var checks = new Checks(s);
@@ -556,7 +560,7 @@ internal static class ApiEmitter
         w.Line("namespace Centrifugal.Cent;");
         foreach (var m in s.Messages)
         {
-            if (Handwritten.Contains(m.Name) || envelopes.Contains(m.Name) || omitted.Contains(m.Name) || Cent.Generator.Types.WrapperScalar(s, m.Name) is not null)
+            if (!Emitted(s, m.Name))
             {
                 continue;
             }
@@ -566,6 +570,14 @@ internal static class ApiEmitter
                 throw new GeneratorException($"api.proto: {m.Name} is both sent and received and has a payload: decide its type");
             }
             Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo server API.", required, checks);
+        }
+        try
+        {
+            Consts.Emit(w, s, n => Emitted(s, n));
+        }
+        catch (GeneratorException e)
+        {
+            throw new GeneratorException("api.proto: " + e.Message);
         }
         return w.ToString();
     }
@@ -878,6 +890,17 @@ internal static class ProxyEmitter
             Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo proxy.", null);
         }
 
+        // The values of the string fields with a fixed set: what a handler compares a
+        // request's fields with, or sets in a result.
+        try
+        {
+            Consts.Emit(w, s, n => used.Contains(n) && !responses.Contains(n) && Cent.Generator.Types.WrapperScalar(s, n) is null);
+        }
+        catch (GeneratorException e)
+        {
+            throw new GeneratorException("proxy.proto: " + e.Message);
+        }
+
         w.Line();
         foreach (var m in methods)
         {
@@ -922,6 +945,189 @@ internal static class ProxyEmitter
 
     private static string Snake(string pascal) =>
         pascal == "RPC" ? "rpc" : Regex.Replace(pascal, "(?<=[a-z])([A-Z])", "_$1").ToLowerInvariant();
+}
+
+/// <summary>
+/// The constants of a string field with listed values: the values, and the messages whose
+/// field of that name lists exactly them.
+/// </summary>
+internal sealed class ConstGroup(string field, List<string> values)
+{
+    public string Field { get; } = field;
+    public List<string> Values { get; } = values;
+    public List<string> Messages { get; } = [];
+
+    /// <summary>The message's name, set when the field's name alone would be ambiguous.</summary>
+    public string Prefix { get; set; } = "";
+
+    /// <summary>The static class holding the constants: <c>OpValues</c>, <c>FilterNodeOpValues</c>.</summary>
+    public string ClassName => Prefix + Names.Pascal(Field) + "Values";
+}
+
+/// <summary>
+/// Constants for the string fields whose comments list their values, in the sentence
+/// <c>One of: add, remove, set.</c> (spec 3.3).
+/// </summary>
+internal static partial class Consts
+{
+    [GeneratedRegex("^[a-z][a-z0-9_]*$")]
+    private static partial Regex ValuePattern();
+
+    /// <summary>How a value is spelled where Pascal case alone reads wrong, as .NET's own names do.</summary>
+    private static readonly Dictionary<string, string> Spellings = new()
+    {
+        ["ios"] = "IOS",
+        ["webpush"] = "WebPush",
+    };
+
+    /// <summary>
+    /// The values a field's comment lists after "One of:", up to the period, or null without
+    /// the sentence. A malformed one fails the generation rather than being skipped.
+    /// </summary>
+    public static List<string>? ListedValues(List<string> doc)
+    {
+        var text = string.Join(' ', doc);
+        var at = text.IndexOf("One of:", StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+        var after = text[(at + "One of:".Length)..];
+        var end = after.IndexOf('.', StringComparison.Ordinal);
+        if (end < 0)
+        {
+            throw new GeneratorException("the values after \"One of:\" must end with a period");
+        }
+        var values = new List<string>();
+        foreach (var raw in after[..end].Split(','))
+        {
+            var v = raw.Trim();
+            if (!ValuePattern().IsMatch(v))
+            {
+                throw new GeneratorException($"\"{v}\" is not a value: lowercase letters, digits and underscores");
+            }
+            if (values.Contains(v))
+            {
+                throw new GeneratorException($"value \"{v}\" listed twice");
+            }
+            values.Add(v);
+        }
+        return values;
+    }
+
+    /// <summary>A value's constant: <c>if_new</c> is <c>IfNew</c>, <c>ios</c> is <c>IOS</c>.</summary>
+    public static string ValueName(string value) => Spellings.GetValueOrDefault(value) ?? Names.Pascal(value);
+
+    /// <summary>
+    /// The fields with listed values of the messages <paramref name="include"/> accepts, in
+    /// groups, in the order of the proto. Where fields of one name list different values in
+    /// different messages, the set listed in the most messages keeps the short name and the
+    /// others are named by their message too - <c>OpValues</c> for the topic updates,
+    /// <c>FilterNodeOpValues</c> for <c>FilterNode</c> - and a tie names all of them so.
+    /// </summary>
+    public static List<ConstGroup> Groups(Schema s, Func<string, bool> include)
+    {
+        var byField = new Dictionary<string, List<ConstGroup>>();
+        var order = new List<string>();
+        foreach (var m in s.Messages.Where(m => include(m.Name)))
+        {
+            foreach (var f in m.Fields)
+            {
+                List<string>? values;
+                try
+                {
+                    values = ListedValues(f.Doc);
+                }
+                catch (GeneratorException e)
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: {e.Message}");
+                }
+                if (values is null)
+                {
+                    continue;
+                }
+                if (f.Type != "string")
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: values are listed for strings only");
+                }
+                if (!byField.TryGetValue(f.Name, out var groups))
+                {
+                    byField[f.Name] = groups = [];
+                    order.Add(f.Name);
+                }
+                var g = groups.Find(g => g.Values.SequenceEqual(values));
+                if (g is null)
+                {
+                    groups.Add(g = new ConstGroup(f.Name, values));
+                }
+                g.Messages.Add(m.Name);
+            }
+        }
+        var result = new List<ConstGroup>();
+        foreach (var name in order)
+        {
+            var groups = byField[name];
+            if (groups.Count > 1)
+            {
+                var most = groups.MaxBy(g => g.Messages.Count)!;
+                var tie = groups.Any(g => g != most && g.Messages.Count == most.Messages.Count);
+                foreach (var g in groups.Where(g => g != most || tie))
+                {
+                    if (g.Messages.Count > 1)
+                    {
+                        throw new GeneratorException($"field {name} lists {string.Join(", ", g.Values)} in {string.Join(", ", g.Messages)} and other values elsewhere: cannot name its constants");
+                    }
+                    g.Prefix = g.Messages[0];
+                }
+            }
+            result.AddRange(groups);
+        }
+        return result;
+    }
+
+    /// <summary>Writes a static class of constants per group.</summary>
+    public static void Emit(CodeWriter w, Schema s, Func<string, bool> include)
+    {
+        foreach (var g in Groups(s, include))
+        {
+            var where = g.Messages.Count == 1 ? g.Messages[0] : string.Join(", ", g.Messages[..^1]) + " and " + g.Messages[^1];
+            w.Line();
+            w.Summary(
+                Wrap($"The values of the {g.Field} field of {where}. The field is a string: a value Centrifugo sends or accepts which these do not name is still a valid one."));
+            w.Line($"public static class {g.ClassName}");
+            w.Line("{");
+            for (var i = 0; i < g.Values.Count; i++)
+            {
+                if (i > 0)
+                {
+                    w.Line();
+                }
+                w.Line($"/// <summary><c>{g.Values[i]}</c>.</summary>");
+                w.Line($"public const string {ValueName(g.Values[i])} = \"{g.Values[i]}\";");
+            }
+            w.Line("}");
+        }
+    }
+
+    private static List<string> Wrap(string text)
+    {
+        var lines = new List<string>();
+        var line = "";
+        foreach (var word in text.Split(' '))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > 88)
+            {
+                lines.Add(line);
+                line = word;
+            }
+            else
+            {
+                line = line.Length == 0 ? word : line + " " + word;
+            }
+        }
+        lines.Add(line);
+        return lines;
+    }
 }
 
 /// <summary>

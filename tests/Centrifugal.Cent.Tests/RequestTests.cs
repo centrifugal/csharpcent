@@ -156,4 +156,17 @@ public sealed class RequestTests
         body = await Sent(c => c.UserTopicUpdateAsync(new UserTopicUpdateRequest { User = "", Op = "add", Topics = ["t"] }, Ct));
         Assert.Equal("""{"op":"add","topics":["t"]}""", body.GetRawText());
     }
+
+    // The fields with listed values stay strings: a value the SDK does not name is still sent.
+    [Fact]
+    public async Task AValueWithoutAConstantIsSent()
+    {
+        var body = await Sent(c => c.DeviceRegisterAsync(new DeviceRegisterRequest
+        {
+            Provider = ProviderValues.Fcm,
+            Platform = "visionos",
+            Token = "t",
+        }, Ct));
+        Assert.Equal("""{"provider":"fcm","token":"t","platform":"visionos"}""", body.GetRawText());
+    }
 }

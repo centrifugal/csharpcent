@@ -188,14 +188,20 @@ rather than mixing two states - read again from the start then.
 
 The results holding a stream position - publish, history, map publish, map
 remove, map read state and map read stream - give it as a `StreamPosition`,
-`result.Position`, which is what `HistoryRequest.Since` takes. Reading what came after a publication:
+`result.Position`, which is what `HistoryRequest.Since` takes. So do the items
+of the history and map state iterators: `HistoryAllAsync` yields a
+`HistoryItem`, the `Publication` with its `Position` - where to resume, or a
+subscription's `RecoverSince` - and `MapReadStateAllAsync` a `MapStateItem`, the
+`Entry` with `State`, the position the state was read at, which
+`MapReadStreamAsync` follows it from. Reading what came after a publication:
 
 ```csharp
 var published = await client.PublishAsync("news", data, ct);
 // ...
-await foreach (var publication in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
+await foreach (var item in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
 {
-    Handle(publication);
+    Handle(item.Publication.Data);
+    last = item.Position; // to resume from later
 }
 ```
 

@@ -62,6 +62,31 @@ public sealed partial class MapRemoveResult
     public StreamPosition Position => new() { Offset = Offset, Epoch = Epoch };
 }
 
+/// <summary>
+/// A publication read by <see cref="CentClient.HistoryAllAsync"/>, with the epoch of the
+/// stream it was read from: its <see cref="Position"/> is where to resume reading, or the
+/// <c>RecoverSince</c> of a subscription, with no fields copied by hand.
+/// </summary>
+/// <param name="Publication">The publication.</param>
+/// <param name="Epoch">The epoch of the channel's stream the publication is in.</param>
+public sealed record HistoryItem(Publication Publication, string Epoch)
+{
+    /// <summary>Where the publication is in the channel's stream.</summary>
+    public StreamPosition Position => new() { Offset = Publication.Offset, Epoch = Epoch };
+}
+
+/// <summary>
+/// An entry read by <see cref="CentClient.MapReadStateAllAsync"/>, with the position of the
+/// state it was read at: following the state with <see cref="CentClient.MapReadStreamAsync"/>
+/// from <see cref="State"/> gets every change made since.
+/// </summary>
+/// <param name="Entry">The entry.</param>
+/// <param name="State">
+/// The position of the map's state the entry was read at: the first page's, every later page
+/// being read at it - or the revision the request set.
+/// </param>
+public sealed record MapStateItem(MapEntry Entry, StreamPosition State);
+
 public sealed partial class HistoryRequest
 {
     internal HistoryRequest Copy() => (HistoryRequest)MemberwiseClone();
@@ -115,17 +140,18 @@ public partial class CentClient
     /// <code>
     /// var published = await client.PublishAsync("news", data, ct);
     /// // ...
-    /// await foreach (var publication in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
+    /// await foreach (var item in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
     /// {
-    ///     Handle(publication);
+    ///     Handle(item.Publication.Data);
+    ///     last = item.Position; // to resume from later
     /// }
     /// </code>
     /// </example>
     /// <param name="request">The first page's request; it is not changed.</param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
-    /// <returns>Every publication, in order.</returns>
+    /// <returns>Every publication, in order, with its position.</returns>
     /// <exception cref="CentInvalidRequestException">The limit is below 1, or <c>Reverse</c> is set: nothing is sent.</exception>
-    public IAsyncEnumerable<Publication> HistoryAllAsync(HistoryRequest request, CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<HistoryItem> HistoryAllAsync(HistoryRequest request, CancellationToken cancellationToken = default)
     {
         if (request is null)
         {
@@ -142,7 +168,7 @@ public partial class CentClient
         return HistoryPages(request.Copy(), cancellationToken);
     }
 
-    private async IAsyncEnumerable<Publication> HistoryPages(HistoryRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<HistoryItem> HistoryPages(HistoryRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -150,7 +176,7 @@ public partial class CentClient
             var result = await HistoryAsync(request, cancellationToken).ConfigureAwait(false);
             foreach (var publication in result.Publications)
             {
-                yield return publication;
+                yield return new HistoryItem(publication, result.Epoch);
             }
             var n = result.Publications.Count;
             if (n < request.Limit)
@@ -246,26 +272,28 @@ public partial class CentClient
     /// <c>RevisionEpoch</c>, unless the request sets them - so that a state reset between
     /// pages fails with code 112, <see cref="ErrorCodes.UnrecoverablePosition"/>, instead of
     /// mixing two states: read again from the start then. Entries changed while iterating
-    /// may be seen in either version; for a consistent view, read the changes since the
-    /// first page's position with <see cref="MapReadStreamAsync"/>. Each page is a call of
+    /// may be seen in either version; for a consistent view, read the changes since with
+    /// <see cref="MapReadStreamAsync"/>, from the <see cref="MapStateItem.State"/> every item
+    /// carries. Each page is a call of
     /// <see cref="MapReadStateAsync"/>.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
-    /// <returns>Every entry, in order.</returns>
-    public IAsyncEnumerable<MapEntry> MapReadStateAllAsync(MapReadStateRequest request, CancellationToken cancellationToken = default) =>
+    /// <returns>Every entry, in order, with the position of the state it was read at.</returns>
+    public IAsyncEnumerable<MapStateItem> MapReadStateAllAsync(MapReadStateRequest request, CancellationToken cancellationToken = default) =>
         MapStatePages(request?.Copy() ?? throw new CentInvalidRequestException("map_read_state", "no request"), cancellationToken);
 
-    private async IAsyncEnumerable<MapEntry> MapStatePages(MapReadStateRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<MapStateItem> MapStatePages(MapReadStateRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var pinned = request.RevisionOffset > 0 || !string.IsNullOrEmpty(request.RevisionEpoch);
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var result = await MapReadStateAsync(request, cancellationToken).ConfigureAwait(false);
+            var (offset, epoch) = pinned ? (request.RevisionOffset, request.RevisionEpoch ?? "") : (result.Offset, result.Epoch);
             foreach (var entry in result.Entries)
             {
-                yield return entry;
+                yield return new MapStateItem(entry, new StreamPosition { Offset = offset, Epoch = epoch });
             }
             if (string.IsNullOrEmpty(result.Cursor))
             {

@@ -177,9 +177,21 @@ public sealed class IntegrationTests
         var after = new List<int>();
         await foreach (var p in c.HistoryAllAsync(new HistoryRequest { Channel = ch, Limit = 2, Since = first.Position }, Ct))
         {
-            after.Add(p.Data!.Value.GetProperty("n").GetInt32());
+            after.Add(p.Publication.Data!.Value.GetProperty("n").GetInt32());
         }
         Assert.Equal([1, 2, 3, 4, 5], after);
+        // An item's position is where to read on from.
+        HistoryItem? third = null;
+        await foreach (var p in c.HistoryAllAsync(new HistoryRequest { Channel = ch, Limit = 2, Since = first.Position }, Ct))
+        {
+            if (p.Publication.Data!.Value.GetProperty("n").GetInt32() == 3)
+            {
+                third = p;
+                break;
+            }
+        }
+        var rest = await c.HistoryAsync(new HistoryRequest { Channel = ch, Limit = 10, Since = third!.Position }, Ct);
+        Assert.Equal([4, 5], rest.Publications.Select(p => p.Data!.Value.GetProperty("n").GetInt32()));
         var history = await c.HistoryAsync(new HistoryRequest { Channel = ch }, Ct);
         Assert.Equal((6UL, first.Epoch), (history.Position.Offset, history.Position.Epoch));
 
@@ -289,7 +301,7 @@ public sealed class IntegrationTests
         var keys = new List<string>();
         await foreach (var entry in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 1 }, Ct))
         {
-            keys.Add(entry.Key);
+            keys.Add(entry.Entry.Key);
         }
         Assert.Equal(["k1", "k2", "k3"], keys.Order());
         var stream = await c.MapReadStreamAsync(new MapReadStreamRequest { Channel = ch, Limit = 10 }, Ct);
@@ -316,9 +328,18 @@ public sealed class IntegrationTests
         var got = new List<string>();
         await foreach (var e in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2 }, Ct))
         {
-            got.Add(e.Key);
+            got.Add(e.Entry.Key);
         }
         Assert.Equal(want, got.Order());
+        // The changes after the state, from the position every item carries.
+        MapStateItem? any = null;
+        await foreach (var e in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2 }, Ct))
+        {
+            any = e;
+        }
+        await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = "k9", Data = RawJson.Parse("{}") }, Ct);
+        var changes = await c.MapReadStreamAsync(new MapReadStreamRequest { Channel = ch, Limit = 10, SinceOffset = any!.State.Offset, SinceEpoch = any.State.Epoch }, Ct);
+        Assert.Equal(["k9"], changes.Entries.Select(e => e.Key));
         var stale = await Assert.ThrowsAsync<CentApiException>(async () =>
         {
             await foreach (var _ in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2, RevisionOffset = 1, RevisionEpoch = "gone" }, Ct))

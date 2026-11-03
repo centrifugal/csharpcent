@@ -52,11 +52,11 @@ public sealed class PagesTests
 
     public static TheoryData<string, Func<CentClient, IAsyncEnumerable<string>>> Methods => new()
     {
-        { "history", c => c.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = PageSize }, Ct).Select(p => p.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture)) },
+        { "history", c => c.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = PageSize }, Ct).Select(p => p.Publication.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture)) },
         { "device_list", c => c.DeviceListAllAsync(new DeviceListRequest { Limit = PageSize }, Ct).Select(d => d.Id) },
         { "device_topic_list", c => c.DeviceTopicListAllAsync(new DeviceTopicListRequest { Limit = PageSize }, Ct).Select(d => d.Id) },
         { "user_topic_list", c => c.UserTopicListAllAsync(new UserTopicListRequest { Limit = PageSize }, Ct).Select(d => d.Id) },
-        { "map_read_state", c => c.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct).Select(e => e.Key) },
+        { "map_read_state", c => c.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct).Select(e => e.Entry.Key) },
     };
 
     private static async Task<List<string>> All(IAsyncEnumerable<string> items)
@@ -174,7 +174,7 @@ public sealed class PagesTests
         var request = new DeviceListRequest { Limit = PageSize };
         var history = new HistoryRequest { Channel = "c", Limit = PageSize };
         await All(client.DeviceListAllAsync(request, Ct).Select(d => d.Id));
-        await All(client.HistoryAllAsync(history, Ct).Select(p => p.Id()));
+        await All(client.HistoryAllAsync(history, Ct).Select(p => p.Publication.Id()));
         Assert.Null(request.Cursor);
         Assert.Null(history.Since);
     }
@@ -220,7 +220,7 @@ public sealed class PagesTests
         var fake = Fake(5);
         await using var client = fake.CreateClient();
         var published = new PublishResult { Offset = 2, Epoch = "e" };
-        var after = await All(client.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = PageSize, Since = published.Position }, Ct).Select(p => p.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        var after = await All(client.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = PageSize, Since = published.Position }, Ct).Select(p => p.Publication.Offset.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         Assert.Equal(["3", "4", "5"], after);
         Assert.Equal("""{"offset":2,"epoch":"e"}""", fake.Requests[0].Json.GetProperty("since").GetRawText());
     }
@@ -236,7 +236,7 @@ public sealed class PagesTests
     {
         var fake = Fake(2 * PageSize + 1);
         await using var client = fake.CreateClient();
-        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct).Select(e => e.Key));
+        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct).Select(e => e.Entry.Key));
         Assert.Equal([null, "7/e", "7/e"], fake.Requests.Select(Revision));
     }
 
@@ -246,8 +246,44 @@ public sealed class PagesTests
     {
         var fake = Fake(2 * PageSize + 1);
         await using var client = fake.CreateClient();
-        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize, RevisionOffset = 3, RevisionEpoch = "mine" }, Ct).Select(e => e.Key));
+        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize, RevisionOffset = 3, RevisionEpoch = "mine" }, Ct).Select(e => e.Entry.Key));
         Assert.Equal(["3/mine", "3/mine", "3/mine"], fake.Requests.Select(Revision));
+    }
+
+    // Each publication comes with its position: its offset and its page's epoch.
+    [Fact]
+    public async Task HistoryItemsCarryTheirPosition()
+    {
+        var fake = Fake(2 * PageSize + 1);
+        await using var client = fake.CreateClient();
+        var positions = new List<string>();
+        await foreach (var item in client.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = PageSize }, Ct))
+        {
+            Assert.Equal(item.Publication.Offset, item.Position.Offset);
+            positions.Add($"{item.Position.Offset}/{item.Position.Epoch}");
+        }
+        Assert.Equal(Enumerable.Range(1, 2 * PageSize + 1).Select(i => $"{i}/e"), positions);
+    }
+
+    // Each entry comes with the state's position: the first page's, or the caller's revision.
+    [Fact]
+    public async Task MapStateItemsCarryTheStatesPosition()
+    {
+        var fake = Fake(2 * PageSize + 1);
+        await using var client = fake.CreateClient();
+        var states = new List<string>();
+        await foreach (var item in client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct))
+        {
+            states.Add($"{item.State.Offset}/{item.State.Epoch}");
+        }
+        Assert.Equal(Enumerable.Repeat("7/e", 2 * PageSize + 1), states);
+
+        states.Clear();
+        await foreach (var item in client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize, RevisionOffset = 3, RevisionEpoch = "mine" }, Ct))
+        {
+            states.Add($"{item.State.Offset}/{item.State.Epoch}");
+        }
+        Assert.Equal(Enumerable.Repeat("3/mine", 2 * PageSize + 1), states);
     }
 }
 

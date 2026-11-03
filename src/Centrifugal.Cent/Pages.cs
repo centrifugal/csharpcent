@@ -63,7 +63,7 @@ public sealed partial class MapRemoveResult
 }
 
 /// <summary>
-/// A publication read by <see cref="CentClient.HistoryAllAsync"/>, with the epoch of the
+/// A publication read by <see cref="CentClient.HistoryAllAsync(HistoryRequest, CancellationToken)"/>, with the epoch of the
 /// stream it was read from: its <see cref="Position"/> is where to resume reading, or the
 /// <c>RecoverSince</c> of a subscription, with no fields copied by hand.
 /// </summary>
@@ -76,7 +76,7 @@ public sealed record HistoryItem(Publication Publication, string Epoch)
 }
 
 /// <summary>
-/// An entry read by <see cref="CentClient.MapReadStateAllAsync"/>, with the position of the
+/// An entry read by <see cref="CentClient.MapReadStateAllAsync(MapReadStateRequest, CancellationToken)"/>, with the position of the
 /// state it was read at: following the state with <see cref="CentClient.MapReadStreamAsync"/>
 /// from <see cref="State"/> gets every change made since.
 /// </summary>
@@ -115,6 +115,17 @@ public sealed partial class MapReadStateRequest
 public partial class CentClient
 {
     /// <summary>
+    /// Every publication of a channel's history, oldest first, with its position,
+    /// each page bounded by <see cref="CentClientOptions.RequestTimeout"/>: see
+    /// <see cref="HistoryAllAsync(HistoryRequest, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>Every publication, in order, with its position.</returns>
+    public IAsyncEnumerable<HistoryItem> HistoryAllAsync(HistoryRequest request, CancellationToken cancellationToken = default) =>
+        HistoryAll(request, null, cancellationToken);
+
+    /// <summary>
     /// The publications of a channel's history, oldest first, a page of
     /// <see cref="HistoryRequest.Limit"/> at a time: from <see cref="HistoryRequest.Since"/>
     /// when it is set, from the start of what the channel keeps otherwise. A page is read when
@@ -131,8 +142,8 @@ public partial class CentClient
     /// seen are gone, and reading again from the start is the only way on.
     /// </para>
     /// <para>
-    /// Each page is a call of <see cref="HistoryAsync"/>, with its own deadline: a mock of that
-    /// method answers this one too.
+    /// Each page is a call of <see cref="HistoryAsync"/>, bounded by the page timeout: a mock
+    /// of that method answers this one too.
     /// </para>
     /// </remarks>
     /// <example>
@@ -148,10 +159,19 @@ public partial class CentClient
     /// </code>
     /// </example>
     /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="pageTimeout">
+    /// Each page's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for its
+    /// request, longer or shorter: positive, at most 24 days. Without it each page gets
+    /// <c>RequestTimeout</c>; the timeout of a client from <see cref="WithTimeout"/> never bounds
+    /// the pages - an iteration lasts as long as its caller's loop.
+    /// </param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every publication, in order, with its position.</returns>
-    /// <exception cref="CentInvalidRequestException">The limit is below 1, or <c>Reverse</c> is set: nothing is sent.</exception>
-    public IAsyncEnumerable<HistoryItem> HistoryAllAsync(HistoryRequest request, CancellationToken cancellationToken = default)
+    /// <exception cref="CentInvalidRequestException">The limit is below 1, <c>Reverse</c> is set, or the page timeout is not positive: nothing is sent.</exception>
+    public IAsyncEnumerable<HistoryItem> HistoryAllAsync(HistoryRequest request, TimeSpan pageTimeout, CancellationToken cancellationToken = default) =>
+        HistoryAll(request, Paging.Timeout("history", pageTimeout), cancellationToken);
+
+    private IAsyncEnumerable<HistoryItem> HistoryAll(HistoryRequest request, TimeSpan? pageTimeout, CancellationToken cancellationToken)
     {
         if (request is null)
         {
@@ -165,15 +185,15 @@ public partial class CentClient
         {
             throw new CentInvalidRequestException("history", "HistoryAllAsync reads forward only: Reverse is not supported");
         }
-        return HistoryPages(request.Copy(), cancellationToken);
+        return HistoryPages(request.Copy(), pageTimeout, cancellationToken);
     }
 
-    private async IAsyncEnumerable<HistoryItem> HistoryPages(HistoryRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<HistoryItem> HistoryPages(HistoryRequest request, TimeSpan? pageTimeout, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = await HistoryAsync(request, cancellationToken).ConfigureAwait(false);
+            var result = await Paging.Page(pageTimeout, () => HistoryAsync(request, cancellationToken)).ConfigureAwait(false);
             foreach (var publication in result.Publications)
             {
                 yield return new HistoryItem(publication, result.Epoch);
@@ -189,6 +209,17 @@ public partial class CentClient
     }
 
     /// <summary>
+    /// Every device a request selects,
+    /// each page bounded by <see cref="CentClientOptions.RequestTimeout"/>: see
+    /// <see cref="DeviceListAllAsync(DeviceListRequest, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>Every device, in order.</returns>
+    public IAsyncEnumerable<Device> DeviceListAllAsync(DeviceListRequest request, CancellationToken cancellationToken = default) =>
+        DeviceListAll(request, null, cancellationToken);
+
+    /// <summary>
     /// Every device a request selects, a page at a time, each page read when the iteration
     /// reaches it: <see cref="DeviceListRequest.Limit"/> is the page size, the server's
     /// default when unset. The iteration ends with the exception of a call which failed.
@@ -198,9 +229,19 @@ public partial class CentClient
     /// call of <see cref="DeviceListAsync"/>. Centrifugo PRO only.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="pageTimeout">
+    /// Each page's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for its
+    /// request, longer or shorter: positive, at most 24 days. Without it each page gets
+    /// <c>RequestTimeout</c>; the timeout of a client from <see cref="WithTimeout"/> never bounds
+    /// the pages - an iteration lasts as long as its caller's loop.
+    /// </param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every device, in order.</returns>
-    public IAsyncEnumerable<Device> DeviceListAllAsync(DeviceListRequest request, CancellationToken cancellationToken = default) =>
+    /// <exception cref="CentInvalidRequestException">The page timeout is not positive, or longer than 24 days: nothing is sent.</exception>
+    public IAsyncEnumerable<Device> DeviceListAllAsync(DeviceListRequest request, TimeSpan pageTimeout, CancellationToken cancellationToken = default) =>
+        DeviceListAll(request, Paging.Timeout("device_list", pageTimeout), cancellationToken);
+
+    private IAsyncEnumerable<Device> DeviceListAll(DeviceListRequest request, TimeSpan? pageTimeout, CancellationToken cancellationToken) =>
         ByCursor(
             request?.Copy() ?? throw new CentInvalidRequestException("device_list", "no request"),
             DeviceListAsync,
@@ -211,20 +252,42 @@ public partial class CentClient
                 next.Cursor = cursor;
                 return next;
             },
+            pageTimeout,
             cancellationToken);
 
     /// <summary>
+    /// Every device topic a request selects,
+    /// each page bounded by <see cref="CentClientOptions.RequestTimeout"/>: see
+    /// <see cref="DeviceTopicListAllAsync(DeviceTopicListRequest, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>Every device topic, in order.</returns>
+    public IAsyncEnumerable<DeviceTopic> DeviceTopicListAllAsync(DeviceTopicListRequest request, CancellationToken cancellationToken = default) =>
+        DeviceTopicListAll(request, null, cancellationToken);
+
+    /// <summary>
     /// Every device topic a request selects, a page at a time, as
-    /// <see cref="DeviceListAllAsync"/> reads devices.
+    /// <see cref="DeviceListAllAsync(DeviceListRequest, TimeSpan, CancellationToken)"/> reads devices.
     /// </summary>
     /// <remarks>
     /// A topic changed while iterating may or may not be seen. Each page is a call of
     /// <see cref="DeviceTopicListAsync"/>. Centrifugo PRO only.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="pageTimeout">
+    /// Each page's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for its
+    /// request, longer or shorter: positive, at most 24 days. Without it each page gets
+    /// <c>RequestTimeout</c>; the timeout of a client from <see cref="WithTimeout"/> never bounds
+    /// the pages - an iteration lasts as long as its caller's loop.
+    /// </param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every device topic, in order.</returns>
-    public IAsyncEnumerable<DeviceTopic> DeviceTopicListAllAsync(DeviceTopicListRequest request, CancellationToken cancellationToken = default) =>
+    /// <exception cref="CentInvalidRequestException">The page timeout is not positive, or longer than 24 days: nothing is sent.</exception>
+    public IAsyncEnumerable<DeviceTopic> DeviceTopicListAllAsync(DeviceTopicListRequest request, TimeSpan pageTimeout, CancellationToken cancellationToken = default) =>
+        DeviceTopicListAll(request, Paging.Timeout("device_topic_list", pageTimeout), cancellationToken);
+
+    private IAsyncEnumerable<DeviceTopic> DeviceTopicListAll(DeviceTopicListRequest request, TimeSpan? pageTimeout, CancellationToken cancellationToken) =>
         ByCursor(
             request?.Copy() ?? throw new CentInvalidRequestException("device_topic_list", "no request"),
             DeviceTopicListAsync,
@@ -235,20 +298,42 @@ public partial class CentClient
                 next.Cursor = cursor;
                 return next;
             },
+            pageTimeout,
             cancellationToken);
 
     /// <summary>
+    /// Every user topic a request selects,
+    /// each page bounded by <see cref="CentClientOptions.RequestTimeout"/>: see
+    /// <see cref="UserTopicListAllAsync(UserTopicListRequest, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>Every user topic, in order.</returns>
+    public IAsyncEnumerable<UserTopic> UserTopicListAllAsync(UserTopicListRequest request, CancellationToken cancellationToken = default) =>
+        UserTopicListAll(request, null, cancellationToken);
+
+    /// <summary>
     /// Every user topic a request selects, a page at a time, as
-    /// <see cref="DeviceListAllAsync"/> reads devices.
+    /// <see cref="DeviceListAllAsync(DeviceListRequest, TimeSpan, CancellationToken)"/> reads devices.
     /// </summary>
     /// <remarks>
     /// A topic changed while iterating may or may not be seen. Each page is a call of
     /// <see cref="UserTopicListAsync"/>. Centrifugo PRO only.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="pageTimeout">
+    /// Each page's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for its
+    /// request, longer or shorter: positive, at most 24 days. Without it each page gets
+    /// <c>RequestTimeout</c>; the timeout of a client from <see cref="WithTimeout"/> never bounds
+    /// the pages - an iteration lasts as long as its caller's loop.
+    /// </param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every user topic, in order.</returns>
-    public IAsyncEnumerable<UserTopic> UserTopicListAllAsync(UserTopicListRequest request, CancellationToken cancellationToken = default) =>
+    /// <exception cref="CentInvalidRequestException">The page timeout is not positive, or longer than 24 days: nothing is sent.</exception>
+    public IAsyncEnumerable<UserTopic> UserTopicListAllAsync(UserTopicListRequest request, TimeSpan pageTimeout, CancellationToken cancellationToken = default) =>
+        UserTopicListAll(request, Paging.Timeout("user_topic_list", pageTimeout), cancellationToken);
+
+    private IAsyncEnumerable<UserTopic> UserTopicListAll(UserTopicListRequest request, TimeSpan? pageTimeout, CancellationToken cancellationToken) =>
         ByCursor(
             request?.Copy() ?? throw new CentInvalidRequestException("user_topic_list", "no request"),
             UserTopicListAsync,
@@ -259,7 +344,19 @@ public partial class CentClient
                 next.Cursor = cursor;
                 return next;
             },
+            pageTimeout,
             cancellationToken);
+
+    /// <summary>
+    /// Every entry of a map channel's state, with the position of the state it was read at,
+    /// each page bounded by <see cref="CentClientOptions.RequestTimeout"/>: see
+    /// <see cref="MapReadStateAllAsync(MapReadStateRequest, TimeSpan, CancellationToken)"/>.
+    /// </summary>
+    /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
+    /// <returns>Every entry, in order, with the position of the state it was read at.</returns>
+    public IAsyncEnumerable<MapStateItem> MapReadStateAllAsync(MapReadStateRequest request, CancellationToken cancellationToken = default) =>
+        MapReadStateAll(request, null, cancellationToken);
 
     /// <summary>
     /// Every entry of a map channel's state, a page at a time, each page read when the
@@ -278,18 +375,28 @@ public partial class CentClient
     /// <see cref="MapReadStateAsync"/>.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
+    /// <param name="pageTimeout">
+    /// Each page's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for its
+    /// request, longer or shorter: positive, at most 24 days. Without it each page gets
+    /// <c>RequestTimeout</c>; the timeout of a client from <see cref="WithTimeout"/> never bounds
+    /// the pages - an iteration lasts as long as its caller's loop.
+    /// </param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every entry, in order, with the position of the state it was read at.</returns>
-    public IAsyncEnumerable<MapStateItem> MapReadStateAllAsync(MapReadStateRequest request, CancellationToken cancellationToken = default) =>
-        MapStatePages(request?.Copy() ?? throw new CentInvalidRequestException("map_read_state", "no request"), cancellationToken);
+    /// <exception cref="CentInvalidRequestException">The page timeout is not positive, or longer than 24 days: nothing is sent.</exception>
+    public IAsyncEnumerable<MapStateItem> MapReadStateAllAsync(MapReadStateRequest request, TimeSpan pageTimeout, CancellationToken cancellationToken = default) =>
+        MapReadStateAll(request, Paging.Timeout("map_read_state", pageTimeout), cancellationToken);
 
-    private async IAsyncEnumerable<MapStateItem> MapStatePages(MapReadStateRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private IAsyncEnumerable<MapStateItem> MapReadStateAll(MapReadStateRequest request, TimeSpan? pageTimeout, CancellationToken cancellationToken) =>
+        MapStatePages(request?.Copy() ?? throw new CentInvalidRequestException("map_read_state", "no request"), pageTimeout, cancellationToken);
+
+    private async IAsyncEnumerable<MapStateItem> MapStatePages(MapReadStateRequest request, TimeSpan? pageTimeout, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var pinned = request.RevisionOffset > 0 || !string.IsNullOrEmpty(request.RevisionEpoch);
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var result = await MapReadStateAsync(request, cancellationToken).ConfigureAwait(false);
+            var result = await Paging.Page(pageTimeout, () => MapReadStateAsync(request, cancellationToken)).ConfigureAwait(false);
             var (offset, epoch) = pinned ? (request.RevisionOffset, request.RevisionEpoch ?? "") : (result.Offset, result.Epoch);
             foreach (var entry in result.Entries)
             {
@@ -316,12 +423,13 @@ public partial class CentClient
         Func<TRequest, CancellationToken, Task<TResult>> call,
         Func<TResult, (IReadOnlyList<TItem> Items, string Next)> page,
         Func<TRequest, string, TRequest> withCursor,
+        TimeSpan? pageTimeout,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (items, next) = page(await call(request, cancellationToken).ConfigureAwait(false));
+            var (items, next) = page(await Paging.Page(pageTimeout, () => call(request, cancellationToken)).ConfigureAwait(false));
             foreach (var item in items)
             {
                 yield return item;
@@ -333,4 +441,38 @@ public partial class CentClient
             request = withCursor(request, next);
         }
     }
+}
+
+/// <summary>
+/// The timeout of the iterators' pages (spec 3.8): each page's request is bounded by the
+/// iterator's page timeout, or <c>RequestTimeout</c> - never by the timeout of a client from
+/// <c>WithTimeout</c>, which bounds whole calls. A page's call reads it as it starts, through
+/// the page's execution context, so that it goes through the virtual method a mock answers.
+/// </summary>
+internal static class Paging
+{
+    private static readonly AsyncLocal<Scope?> Current = new();
+
+    /// <summary>The timeout of the page being read, when a call is one: its own, or null for <c>RequestTimeout</c>.</summary>
+    public static bool InPage(out TimeSpan? timeout)
+    {
+        timeout = Current.Value?.Timeout;
+        return Current.Value is not null;
+    }
+
+    /// <summary>Reads a page: the call made inside is bounded by <paramref name="timeout"/>, or <c>RequestTimeout</c>.</summary>
+    public static async Task<T> Page<T>(TimeSpan? timeout, Func<Task<T>> call)
+    {
+        // Set in this method's own execution context: restored when it returns.
+        Current.Value = new Scope(timeout);
+        return await call().ConfigureAwait(false);
+    }
+
+    /// <summary>Checks an iterator's page timeout before anything is sent.</summary>
+    public static TimeSpan Timeout(string method, TimeSpan timeout) =>
+        Deadline.IsValid(timeout)
+            ? timeout
+            : throw new CentInvalidRequestException(method, $"PageTimeout is {timeout}: give a positive TimeSpan of at most 24 days, or none for RequestTimeout");
+
+    private sealed record Scope(TimeSpan? Timeout);
 }

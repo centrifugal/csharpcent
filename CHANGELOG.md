@@ -71,6 +71,10 @@ synced again from the tag before this version is released.
 - `HistoryAllAsync`, `DeviceListAllAsync`, `DeviceTopicListAllAsync`,
   `UserTopicListAllAsync` and `MapReadStateAllAsync`: every item of a paged
   method as an `IAsyncEnumerable`, a page read when the iteration reaches it.
+  Each page's request is bounded by `RequestTimeout`, or by the iterator's
+  `pageTimeout` overload replacing it; the timeout of a client from
+  `WithTimeout` does not bound pages, and nothing but the caller's
+  `CancellationToken` bounds the iteration.
   `HistoryAllAsync` yields `HistoryItem`s - the `Publication` with its
   `Position`, to resume from - and `MapReadStateAllAsync` `MapStateItem`s - the
   `Entry` with `State`, the position the state was read at. `MapReadStateAllAsync`

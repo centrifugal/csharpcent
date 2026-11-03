@@ -170,8 +170,8 @@ with the token of an HTTP request which lives for minutes still gives up on a
 stuck Centrifugo at `RequestTimeout`. To let calls take longer, raise the
 timeout: it cannot be turned off. `RequestTimeout` zero is the default, and
 `Timeout.InfiniteTimeSpan`, a negative timeout or one longer than 24 days is
-refused - by `CentClient`'s constructor, `WithTimeout` and `AttemptTimeout`
-alike.
+refused - by `CentClient`'s constructor, `WithTimeout`, `AttemptTimeout` and
+the iterators' page timeout alike.
 
 ```csharp
 var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
@@ -183,7 +183,12 @@ var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(re
 `UserTopicListAllAsync` and `MapReadStateAllAsync` give every item of a paged
 method as an `IAsyncEnumerable`, reading a page when the iteration reaches it:
 leaving the loop reads no further page, and a failed call ends it with its
-exception. The request's `Limit` is the page size. Items changing while
+exception. The request's `Limit` is the page size. Each page's request is
+bounded by `RequestTimeout`, or by a page timeout of its own -
+`client.DeviceListAllAsync(request, pageTimeout: TimeSpan.FromSeconds(30), ct)` -
+replacing it, longer or shorter. Nothing bounds the iteration as a whole but
+the caller's `CancellationToken`: it lasts as long as the loop, and the timeout
+of a client from `WithTimeout` does not apply to its pages. Items changing while
 iterating - a device registered, an entry updated - may or may not be seen.
 `MapReadStateAllAsync` reads every page after the first at the first one's
 revision, unless the request sets `RevisionOffset` and `RevisionEpoch`: a map

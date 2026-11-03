@@ -299,3 +299,110 @@ internal static class PageExtensions
         }
     }
 }
+
+/// <summary>The iterators' page timeout (spec 3.2, 3.8).</summary>
+public sealed class PageTimeoutTests
+{
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    // Two pages, each answered after 300 ms.
+    private static FakeCentrifugo Slow() => new(r =>
+    {
+        var reply = r.ApiMethod == "history"
+            ? (r.Json.TryGetProperty("since", out _) ? """{"result":{"publications":[],"epoch":"e"}}""" : """{"result":{"publications":[{"offset":1}],"epoch":"e"}}""")
+            : r.Json.TryGetProperty("cursor", out _) ? """{"result":{"items":[{"id":"2"}],"entries":[{"key":"2"}]}}""" : """{"result":{"items":[{"id":"1"}],"next_cursor":"1","entries":[{"key":"1"}],"cursor":"1"}}""";
+        return Answer.After(TimeSpan.FromMilliseconds(300), Answer.Ok(reply));
+    });
+
+    public static TheoryData<string> Methods => new() { "history", "device_list", "device_topic_list", "user_topic_list", "map_read_state" };
+
+    private static IAsyncEnumerable<object> All(CentClient c, string method, TimeSpan? pageTimeout) => (method, pageTimeout) switch
+    {
+        ("history", null) => c.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = 1 }, Ct),
+        ("history", { } t) => c.HistoryAllAsync(new HistoryRequest { Channel = "c", Limit = 1 }, t, Ct),
+        ("device_list", null) => c.DeviceListAllAsync(new DeviceListRequest(), Ct),
+        ("device_list", { } t) => c.DeviceListAllAsync(new DeviceListRequest(), t, Ct),
+        ("device_topic_list", null) => c.DeviceTopicListAllAsync(new DeviceTopicListRequest(), Ct),
+        ("device_topic_list", { } t) => c.DeviceTopicListAllAsync(new DeviceTopicListRequest(), t, Ct),
+        ("user_topic_list", null) => c.UserTopicListAllAsync(new UserTopicListRequest(), Ct),
+        ("user_topic_list", { } t) => c.UserTopicListAllAsync(new UserTopicListRequest(), t, Ct),
+        ("map_read_state", null) => c.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c" }, Ct),
+        (_, { } t) => c.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c" }, t, Ct),
+        _ => throw new ArgumentException(method),
+    };
+
+    private static async Task<int> Count(IAsyncEnumerable<object> items)
+    {
+        var n = 0;
+        await foreach (var _ in items)
+        {
+            n++;
+        }
+        return n;
+    }
+
+    // A page timeout longer than RequestTimeout lets a slow page finish.
+    [Theory]
+    [MemberData(nameof(Methods))]
+    public async Task ALongerPageTimeoutLetsASlowPageFinish(string method)
+    {
+        var fake = Slow();
+        await using var client = fake.CreateClient(o => o.RequestTimeout = TimeSpan.FromMilliseconds(50));
+        Assert.True(await Count(All(client, method, TimeSpan.FromSeconds(10))) >= 1);
+        Assert.Equal(2, fake.Requests.Count);
+    }
+
+    // A page timeout shorter than RequestTimeout ends a slow page.
+    [Theory]
+    [MemberData(nameof(Methods))]
+    public async Task AShorterPageTimeoutEndsASlowPage(string method)
+    {
+        var fake = Slow();
+        await using var client = fake.CreateClient(o => o.RequestTimeout = TimeSpan.FromSeconds(10));
+        await Assert.ThrowsAsync<CentTimeoutException>(() => Count(All(client, method, TimeSpan.FromMilliseconds(50))));
+    }
+
+    // Without one, each page gets RequestTimeout - not the timeout of a WithTimeout view,
+    // which bounds whole calls.
+    [Theory]
+    [MemberData(nameof(Methods))]
+    public async Task WithoutOneEachPageGetsRequestTimeout(string method)
+    {
+        var fake = Slow();
+        await using var client = fake.CreateClient(o => o.RequestTimeout = TimeSpan.FromMilliseconds(50));
+        await Assert.ThrowsAsync<CentTimeoutException>(() => Count(All(client, method, null)));
+        await Assert.ThrowsAsync<CentTimeoutException>(() => Count(All(client.WithTimeout(TimeSpan.FromSeconds(10)), method, null)));
+
+        await using var patient = fake.CreateClient(o => o.RequestTimeout = TimeSpan.FromSeconds(10));
+        Assert.True(await Count(All(patient.WithTimeout(TimeSpan.FromMilliseconds(50)), method, null)) >= 1);
+    }
+
+    [Theory]
+    [MemberData(nameof(Methods))]
+    public async Task AZeroNegativeOrInfinitePageTimeoutIsRefusedBeforeSending(string method)
+    {
+        var fake = Slow();
+        await using var client = fake.CreateClient();
+        foreach (var t in new[] { TimeSpan.Zero, TimeSpan.FromSeconds(-1), Timeout.InfiniteTimeSpan })
+        {
+            var e = Assert.Throws<CentInvalidRequestException>(() => All(client, method, t));
+            Assert.Contains("PageTimeout", e.Message, StringComparison.Ordinal);
+        }
+        await Task.Yield();
+        Assert.Empty(fake.Requests);
+    }
+
+    // The page timeout does not leak into calls made while iterating.
+    [Fact]
+    public async Task CallsInTheLoopKeepTheirOwnTimeout()
+    {
+        var fake = new FakeCentrifugo(r => r.ApiMethod == "publish"
+            ? Answer.After(TimeSpan.FromMilliseconds(300), Answer.Ok(FakeCentrifugo.DefaultReply(r)))
+            : Answer.Ok("""{"result":{"items":[{"id":"1"}]}}"""));
+        await using var client = fake.CreateClient(o => o.RequestTimeout = TimeSpan.FromMilliseconds(50));
+        await foreach (var _ in client.DeviceListAllAsync(new DeviceListRequest(), TimeSpan.FromSeconds(10), Ct))
+        {
+            await Assert.ThrowsAsync<CentTimeoutException>(() => client.PublishAsync("c", 1, Ct));
+        }
+    }
+}

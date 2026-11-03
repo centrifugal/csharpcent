@@ -134,7 +134,10 @@ rest of what CI runs.
   fields stay strings.
 - **The `*AllAsync` iterators are not virtual**: each page is a call of the
   method's virtual `Async` form, so a mock of that answers both, as the short
-  forms do.
+  forms do. A page's timeout - the `pageTimeout` overload's, or
+  `RequestTimeout`, never a `WithTimeout` view's (spec 3.8) - reaches that call
+  through an internal `AsyncLocal` read by `CallAsync` (`Paging` in
+  `Pages.cs`), set only for the page's own call.
 - **A request's payload is `object?`**, a reply's `JsonElement?`: the spec's C#
   row - native values in, the JSON type out. An application's object is encoded
   with `JsonSerializerDefaults.Web`, as ASP.NET Core and SignalR encode what

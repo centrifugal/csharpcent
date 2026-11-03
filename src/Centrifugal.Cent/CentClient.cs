@@ -192,7 +192,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
 
     internal async Task<TResult> CallAsync<TRequest, TResult>(ApiMethod<TRequest, TResult> method, TRequest request, CancellationToken cancellationToken)
     {
-        var element = await _core.CallAsync(method.Name, method.ProOnly, () => method.Encode(request), _timeout, cancellationToken).ConfigureAwait(false);
+        // A page of an iterator has the page timeout, or RequestTimeout: never a view's (spec 3.8).
+        var timeout = Paging.InPage(out var page) ? page ?? _core.RequestTimeout : _timeout;
+        var element = await _core.CallAsync(method.Name, method.ProOnly, () => method.Encode(request), timeout, cancellationToken).ConfigureAwait(false);
         return method.Decode(element);
     }
 

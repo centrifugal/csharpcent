@@ -33,6 +33,13 @@ synced again from the tag before this version is released.
   `CentUnauthorizedException`, Centrifugo refusing this server's credentials,
   with the opposite meaning. Client SDKs report the 403 as their
   `UnauthorizedError`.
+- A call can no longer be left unbounded: `Timeout.InfiniteTimeSpan`, which 0.1.0
+  took as no timeout, is refused, as are negative timeouts and ones longer than
+  24 days. `RequestTimeout` fails creating the client with
+  `CentInvalidConfigException`, `WithTimeout` with `ArgumentOutOfRangeException`,
+  and `AttemptTimeout` the call with `CentInvalidRequestException` before any
+  attempt. `RequestTimeout` zero still means the default, 10 seconds; zero is
+  refused where it differs from unset, for `WithTimeout` and `AttemptTimeout`.
 - An exception thrown by `ApiEndpointFunc` or `BearerTokenFunc` now fails the
   call as a `CentFunctionException` naming the function (`BearerTokenFunc: ...`),
   with the exception as its `InnerException`, where it escaped as it was

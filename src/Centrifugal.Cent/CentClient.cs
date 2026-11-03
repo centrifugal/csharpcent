@@ -90,8 +90,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
     /// replaces <see cref="CentClientOptions.RequestTimeout"/> for those calls, longer or
     /// shorter; a call's <see cref="CancellationToken"/> still ends it sooner.
     /// </summary>
-    /// <param name="timeout">The timeout of each call; <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> for none.</param>
+    /// <param name="timeout">The timeout of each call: positive, at most 24 days. A call cannot be left unbounded.</param>
     /// <returns>The client.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is zero, negative, infinite or longer than 24 days.</exception>
     /// <example>
     /// <code>
     /// var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
@@ -99,9 +100,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
     /// </example>
     public virtual CentClient WithTimeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero && timeout != System.Threading.Timeout.InfiniteTimeSpan)
+        if (!Deadline.IsValid(timeout))
         {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "a timeout is positive, or Timeout.InfiniteTimeSpan");
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "a timeout is positive and at most 24 days: a call cannot be left unbounded");
         }
         return new CentClient(_core, timeout, ownTimeout: true);
     }

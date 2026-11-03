@@ -168,7 +168,10 @@ end throws `CentTimeoutException`. A call's `CancellationToken` only shortens
 it, throwing `OperationCanceledException`, and never extends it: a call made
 with the token of an HTTP request which lives for minutes still gives up on a
 stuck Centrifugo at `RequestTimeout`. To let calls take longer, raise the
-timeout.
+timeout: it cannot be turned off. `RequestTimeout` zero is the default, and
+`Timeout.InfiniteTimeSpan`, a negative timeout or one longer than 24 days is
+refused - by `CentClient`'s constructor, `WithTimeout` and `AttemptTimeout`
+alike.
 
 ```csharp
 var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);

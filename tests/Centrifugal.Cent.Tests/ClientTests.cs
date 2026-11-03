@@ -78,13 +78,30 @@ public sealed class ClientTests
     public void ApiKeyWithANewlineIsRefused() =>
         Assert.Throws<CentInvalidConfigException>(() => new CentClient("http://localhost:8000/api", "key\n"));
 
-    [Fact]
-    public void NegativeTimeoutIsRefused() =>
+    // RequestTimeout cannot be turned off: a call is never unbounded.
+    [Theory]
+    [InlineData(-1.0)]
+    [InlineData(-0.001)]
+    [InlineData(25 * 24 * 3600.0)]
+    public void ANegativeOrUnboundedRequestTimeoutIsRefused(double seconds) =>
         Assert.Throws<CentInvalidConfigException>(() => new CentClient(new CentClientOptions
         {
             ApiEndpoint = "http://localhost:8000/api",
-            RequestTimeout = TimeSpan.FromSeconds(-1),
+            RequestTimeout = TimeSpan.FromSeconds(seconds),
         }));
+
+    [Fact]
+    public void AnInfiniteRequestTimeoutIsRefusedAndZeroIsTheDefault()
+    {
+        var e = Assert.Throws<CentInvalidConfigException>(() => new CentClient(new CentClientOptions
+        {
+            ApiEndpoint = "http://localhost:8000/api",
+            RequestTimeout = Timeout.InfiniteTimeSpan,
+        }));
+        Assert.Contains("RequestTimeout", e.Message, StringComparison.Ordinal);
+        using var zero = new CentClient(new CentClientOptions { ApiEndpoint = "http://localhost:8000/api", RequestTimeout = TimeSpan.Zero });
+        Assert.Equal(TimeSpan.FromSeconds(10), zero.Timeout);
+    }
 
     [Fact]
     public async Task RequestIsAPostOfJsonWithCredentials()
@@ -451,7 +468,10 @@ public sealed class ClientTests
     {
         using var client = new CentClient("http://localhost:8000/api");
         Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.Zero));
-        Assert.Equal(Timeout.InfiniteTimeSpan, client.WithTimeout(Timeout.InfiniteTimeSpan).Timeout);
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.FromSeconds(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(Timeout.InfiniteTimeSpan));
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.FromDays(25)));
+        Assert.Equal(TimeSpan.FromDays(24), client.WithTimeout(TimeSpan.FromDays(24)).Timeout);
     }
 
     [Fact]

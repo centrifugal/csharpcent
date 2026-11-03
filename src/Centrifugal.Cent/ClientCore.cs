@@ -62,9 +62,11 @@ internal sealed class ClientCore : IDisposable
             _apiKey = options.ApiKey.Length > 0 ? options.ApiKey : null;
         }
         _bearerTokenFunc = options.BearerTokenFunc;
-        if (options.RequestTimeout < TimeSpan.Zero && options.RequestTimeout != Timeout.InfiniteTimeSpan)
+        // Zero is the default, as the option's initial value is: the two cannot be told apart
+        // through configuration. A call is never unbounded (spec 3.1).
+        if (options.RequestTimeout != TimeSpan.Zero && !Deadline.IsValid(options.RequestTimeout))
         {
-            throw new CentInvalidConfigException("RequestTimeout is negative: give a positive TimeSpan, or Timeout.InfiniteTimeSpan for none");
+            throw new CentInvalidConfigException($"RequestTimeout is {options.RequestTimeout}: give a positive TimeSpan of at most 24 days - a call cannot be left unbounded; raise it to let calls take longer");
         }
         RequestTimeout = options.RequestTimeout == TimeSpan.Zero ? TimeSpan.FromSeconds(10) : options.RequestTimeout;
         foreach (var (name, value) in options.Headers ?? new Dictionary<string, string>())
@@ -518,6 +520,9 @@ internal readonly record struct Deadline(long Timestamp, TimeSpan Timeout)
 {
     /// <summary>Timeouts longer than this are no timeout: a timer cannot hold them.</summary>
     private static readonly TimeSpan Longest = TimeSpan.FromDays(24);
+
+    /// <summary>A timeout a call can have: positive, and at most 24 days, which a timer holds.</summary>
+    public static bool IsValid(TimeSpan timeout) => timeout > TimeSpan.Zero && timeout <= Longest;
 
     public bool IsInfinite => Timestamp == long.MaxValue;
 

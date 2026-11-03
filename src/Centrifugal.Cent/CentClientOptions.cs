@@ -47,7 +47,9 @@ public sealed class CentClientOptions
     public HttpClient? HttpClient { get; set; }
 
     /// <summary>
-    /// Bounds every call: 10 seconds by default. A call's <see cref="CancellationToken"/> only
+    /// Bounds every call: 10 seconds by default, and when set to zero. It cannot be turned
+    /// off: <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>, a negative value or one
+    /// longer than 24 days is refused - raise it to let calls take longer. A call's <see cref="CancellationToken"/> only
     /// shortens it, never extends it; <see cref="CentClient.WithTimeout"/> replaces it, longer
     /// or shorter, for the calls of the client it returns.
     /// </summary>

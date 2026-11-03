@@ -175,7 +175,8 @@ public sealed class BroadcastRetryOptions
 
     /// <summary>
     /// Each attempt's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for
-    /// it, longer or shorter; null means <c>RequestTimeout</c> bounds each attempt. The call's
+    /// it, longer or shorter - positive, at most 24 days; null means <c>RequestTimeout</c>
+    /// bounds each attempt, and zero, a negative or an infinite one is refused. The call's
     /// <see cref="CancellationToken"/>, and the timeout of a client from
     /// <see cref="CentClient.WithTimeout"/>, bound them all, waits included, and end an
     /// attempt sooner.
@@ -253,9 +254,9 @@ public partial class CentClient
         {
             throw new CentInvalidRequestException("broadcast", $"MaxAttempts is {options.MaxAttempts}: give at least 1");
         }
-        if (options.AttemptTimeout is { } t && t <= TimeSpan.Zero)
+        if (options.AttemptTimeout is { } t && !Deadline.IsValid(t))
         {
-            throw new CentInvalidRequestException("broadcast", "AttemptTimeout is not positive");
+            throw new CentInvalidRequestException("broadcast", $"AttemptTimeout is {t}: give a positive TimeSpan of at most 24 days, or null for RequestTimeout");
         }
         if (request is null)
         {
@@ -281,7 +282,7 @@ public partial class CentClient
             }
             var attemptRequest = request.ForAttempt(pending.Select(i => channels[i]).ToList(), key);
             var timeout = deadline.Remaining(time);
-            if (timeout == System.Threading.Timeout.InfiniteTimeSpan || (attemptTimeout != System.Threading.Timeout.InfiniteTimeSpan && attemptTimeout < timeout))
+            if (timeout == System.Threading.Timeout.InfiniteTimeSpan || attemptTimeout < timeout)
             {
                 timeout = attemptTimeout;
             }

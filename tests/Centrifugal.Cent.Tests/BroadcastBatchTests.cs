@@ -204,7 +204,9 @@ public sealed class BroadcastBatchTests
     [Theory]
     [InlineData(0, null)]
     [InlineData(-1, null)]
-    [InlineData(2, -1)]
+    [InlineData(2, -1)] // Timeout.InfiniteTimeSpan: a call cannot be left unbounded
+    [InlineData(2, -5)]
+    [InlineData(2, 0)]
     public async Task InvalidRetryOptionsAreRefusedBeforeAnyAttempt(int maxAttempts, int? attemptTimeoutMs)
     {
         var fake = new FakeCentrifugo();

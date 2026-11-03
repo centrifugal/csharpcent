@@ -93,6 +93,17 @@ public sealed class HandlerTests
     }
 
     [Fact]
+    public async Task AnEmptyResultIsSent()
+    {
+        // An empty result accepts the request as sent: it must reach
+        // Centrifugo, not be left out as an empty message of a request is.
+        var connect = new ProxyHandlers().Connect((_, _) => Task.FromResult(new ConnectResult()));
+        var r = await Post(connect, """{"client":"c","transport":"websocket","protocol":"json","encoding":"json"}""");
+        Assert.Equal(200, r.StatusCode);
+        Assert.Equal("""{"result":{}}""", Text(r));
+    }
+
+    [Fact]
     public async Task MalformedAndWrongRequestsAreRefused()
     {
         var errors = new List<Exception>();

@@ -177,6 +177,10 @@ method as an `IAsyncEnumerable`, reading a page when the iteration reaches it:
 leaving the loop reads no further page, and a failed call ends it with its
 exception. The request's `Limit` is the page size. Items changing while
 iterating - a device registered, an entry updated - may or may not be seen.
+`MapReadStateAllAsync` reads every page after the first at the first one's
+revision, unless the request sets `RevisionOffset` and `RevisionEpoch`: a map
+state reset between pages fails with `ErrorCodes.UnrecoverablePosition` (112)
+rather than mixing two states - read again from the start then.
 
 The results holding a stream position - publish, history, map read state and
 map read stream - give it as a `StreamPosition`, `result.Position`, which is what

@@ -219,26 +219,46 @@ public partial class CentClient
     /// iteration ends with the exception of a call which failed.
     /// </summary>
     /// <remarks>
-    /// An entry changed while iterating may be seen in either version, or not at all; for a
-    /// consistent view, read the state with <see cref="MapReadStateAsync"/>, then the changes
-    /// since its <see cref="MapReadStateResult.Position"/> with <see cref="MapReadStreamAsync"/>.
-    /// Each page is a call of <see cref="MapReadStateAsync"/>.
+    /// Every page after the first is read at the first one's revision - its
+    /// <see cref="MapReadStateResult.Position"/>, as <c>RevisionOffset</c> and
+    /// <c>RevisionEpoch</c>, unless the request sets them - so that a state reset between
+    /// pages fails with code 112, <see cref="ErrorCodes.UnrecoverablePosition"/>, instead of
+    /// mixing two states: read again from the start then. Entries changed while iterating
+    /// may be seen in either version; for a consistent view, read the changes since the
+    /// first page's position with <see cref="MapReadStreamAsync"/>. Each page is a call of
+    /// <see cref="MapReadStateAsync"/>.
     /// </remarks>
     /// <param name="request">The first page's request; it is not changed.</param>
     /// <param name="cancellationToken">Ends the iteration: it then throws <see cref="OperationCanceledException"/>.</param>
     /// <returns>Every entry, in order.</returns>
     public IAsyncEnumerable<MapEntry> MapReadStateAllAsync(MapReadStateRequest request, CancellationToken cancellationToken = default) =>
-        ByCursor(
-            request?.Copy() ?? throw new CentInvalidRequestException("map_read_state", "no request"),
-            MapReadStateAsync,
-            r => (r.Entries, r.Cursor),
-            (r, cursor) =>
+        MapStatePages(request?.Copy() ?? throw new CentInvalidRequestException("map_read_state", "no request"), cancellationToken);
+
+    private async IAsyncEnumerable<MapEntry> MapStatePages(MapReadStateRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var pinned = request.RevisionOffset > 0 || !string.IsNullOrEmpty(request.RevisionEpoch);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await MapReadStateAsync(request, cancellationToken).ConfigureAwait(false);
+            foreach (var entry in result.Entries)
             {
-                var next = r.Copy();
-                next.Cursor = cursor;
-                return next;
-            },
-            cancellationToken);
+                yield return entry;
+            }
+            if (string.IsNullOrEmpty(result.Cursor))
+            {
+                yield break;
+            }
+            request = request.Copy();
+            request.Cursor = result.Cursor;
+            if (!pinned)
+            {
+                request.RevisionOffset = result.Offset;
+                request.RevisionEpoch = result.Epoch;
+                pinned = true;
+            }
+        }
+    }
 
     /// <summary>The items of a method paged by a cursor: the request, then the request with each reply's cursor, until a reply has none.</summary>
     private static async IAsyncEnumerable<TItem> ByCursor<TRequest, TResult, TItem>(

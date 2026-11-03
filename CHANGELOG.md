@@ -43,6 +43,9 @@ synced again from the tag before this version is released.
 - `HistoryAllAsync`, `DeviceListAllAsync`, `DeviceTopicListAllAsync`,
   `UserTopicListAllAsync` and `MapReadStateAllAsync`: every item of a paged
   method as an `IAsyncEnumerable`, a page read when the iteration reaches it.
+  `MapReadStateAllAsync` reads every page after the first at the first one's
+  revision, unless the request sets one, so a map state reset between pages
+  fails with code 112 rather than mixing two states.
 - `Position` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
   `MapReadStreamResult`: the `StreamPosition` which `HistoryRequest.Since` takes.
 - `SubscriptionClaims.Client`, binding a subscription token to one connection,

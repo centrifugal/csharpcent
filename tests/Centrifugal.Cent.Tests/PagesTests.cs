@@ -219,6 +219,31 @@ public sealed class PagesTests
         Assert.Equal(["3", "4", "5"], after);
         Assert.Equal("""{"offset":2,"epoch":"e"}""", fake.Requests[0].Json.GetProperty("since").GetRawText());
     }
+
+    private static string? Revision(Recorded r) =>
+        r.Json.TryGetProperty("revision_epoch", out var e)
+            ? $"{(r.Json.TryGetProperty("revision_offset", out var o) ? o.GetUInt64() : 0)}/{e.GetString()}"
+            : null;
+
+    // Every page after the first is read at the first page's revision.
+    [Fact]
+    public async Task MapReadStateAllPinsLaterPagesToTheFirstOnesRevision()
+    {
+        var fake = Fake(2 * PageSize + 1);
+        await using var client = fake.CreateClient();
+        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize }, Ct).Select(e => e.Key));
+        Assert.Equal([null, "7/e", "7/e"], fake.Requests.Select(Revision));
+    }
+
+    // A revision the request sets is kept on every page.
+    [Fact]
+    public async Task MapReadStateAllKeepsTheCallersRevision()
+    {
+        var fake = Fake(2 * PageSize + 1);
+        await using var client = fake.CreateClient();
+        await All(client.MapReadStateAllAsync(new MapReadStateRequest { Channel = "c", Limit = PageSize, RevisionOffset = 3, RevisionEpoch = "mine" }, Ct).Select(e => e.Key));
+        Assert.Equal(["3/mine", "3/mine", "3/mine"], fake.Requests.Select(Revision));
+    }
 }
 
 internal static class PageExtensions

@@ -300,6 +300,34 @@ public sealed class IntegrationTests
         await c.SharedPollPublishAsync(new SharedPollPublishRequest { Channel = "poll:" + Unique(), Key = "k", Version = 1, Data = new { v = 1 } }, Ct);
     }
 
+    // A map state read page by page: every page after the first carries the first one's
+    // revision, which Centrifugo accepts with a cursor; a revision from another epoch fails.
+    [Fact]
+    public async Task ReadsMapStatePageByPage()
+    {
+        await using var c = await Client();
+        var ch = "map:" + Unique();
+        var want = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            want.Add($"k{i}");
+            await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = $"k{i}", Data = RawJson.Parse("{}") }, Ct);
+        }
+        var got = new List<string>();
+        await foreach (var e in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2 }, Ct))
+        {
+            got.Add(e.Key);
+        }
+        Assert.Equal(want, got.Order());
+        var stale = await Assert.ThrowsAsync<CentApiException>(async () =>
+        {
+            await foreach (var _ in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2, RevisionOffset = 1, RevisionEpoch = "gone" }, Ct))
+            {
+            }
+        });
+        Assert.Equal(ErrorCodes.UnrecoverablePosition, stale.Code);
+    }
+
     [Fact]
     public async Task BatchesConcurrentCallsAutomaticallyInOrderPerCaller()
     {

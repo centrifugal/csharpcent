@@ -13,6 +13,7 @@ concurrency and hard to misuse. Read this before changing code.
 |---|---|
 | `proto/api.proto`, `proto/proxy.proto` | Copies of Centrifugo's protos, from Centrifugo's master (e21aeb50) until a release tag carries the "One of:" sentences: sync them from that tag before releasing |
 | `tools/Generator/` | The generator: `Proto.cs` parses the protos, `Emit.cs` writes the code |
+| `tools/Generator/constants_api.txt`, `constants_proxy.txt` | The constants' names spec 3.3 pins, by `Message.field` or `*.field` |
 | `tools/Generator/required_fields.txt` | The fields the protos mark "Required.", made `required` members - the reviewed list the other SDKs share. Generation fails when the protos' list differs |
 | `src/Centrifugal.Cent/Generated/` | Generated - never edited: request and result types, the client's, batches' and commands' methods, the JSON contexts, the proxy types and handlers |
 | `tests/Centrifugal.Cent.Tests/Generated/` | Generated - never edited: every method reaches its endpoint, batch command and consumer command |
@@ -123,10 +124,14 @@ rest of what CI runs.
   which Centrifugo PRO reads as a strategy. A presence wrapper - `device_update`'s
   updates, found from the protos' comments - is never zero: an empty one is
   sent as `{}`, and clears.
-- **Constants are static classes named by field and `Values`**: `OpValues.Add`,
-  `EncodingValues.Binary`. A class named `Type` or `Encoding` alone would make
-  `System.Type` and `System.Text.Encoding` ambiguous in every file importing
-  the namespace. The fields stay strings (spec 3.3).
+- **Constants are static classes named by the pinned name and `Values`**:
+  `OpValues.Add`, `EncodingValues.Binary`, `ChannelEventTypeValues.Occupied`.
+  The names are spec 3.3's table, held in `tools/Generator/constants_api.txt`
+  and `constants_proxy.txt`, never derived: the generator fails on a "One of:"
+  field the list lacks, a pin no field uses, and one name over different
+  values. `Values` keeps a class named `Encoding` from making
+  `System.Text.Encoding` ambiguous in every file importing the namespace. The
+  fields stay strings.
 - **The `*AllAsync` iterators are not virtual**: each page is a call of the
   method's virtual `Async` form, so a mock of that answers both, as the short
   forms do.

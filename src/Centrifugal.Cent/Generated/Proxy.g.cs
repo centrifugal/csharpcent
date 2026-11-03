@@ -1563,7 +1563,7 @@ public sealed partial class SharedPollRefreshResultItem : IWireMessage
 /// The values of the op field of FilterNode. The field is a string: a value Centrifugo
 /// sends or accepts which these do not name is still a valid one.
 /// </summary>
-public static class OpValues
+public static class FilterNodeOpValues
 {
     /// <summary><c>and</c>.</summary>
     public const string And = "and";
@@ -1675,7 +1675,7 @@ public static class AllowValues
 /// The values of the match field of ChannelsCapability. The field is a string: a value
 /// Centrifugo sends or accepts which these do not name is still a valid one.
 /// </summary>
-public static class MatchValues
+public static class CapabilityMatchValues
 {
     /// <summary><c>wildcard</c>.</summary>
     public const string Wildcard = "wildcard";
@@ -1701,7 +1701,7 @@ public static class KeyModeValues
 /// The values of the type field of ChannelEvent. The field is a string: a value Centrifugo
 /// sends or accepts which these do not name is still a valid one.
 /// </summary>
-public static class TypeValues
+public static class ChannelEventTypeValues
 {
     /// <summary><c>occupied</c>.</summary>
     public const string Occupied = "occupied";

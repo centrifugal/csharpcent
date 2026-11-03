@@ -3862,23 +3862,6 @@ public static class FilterNodeOpValues
 }
 
 /// <summary>
-/// The values of the op field of DeviceTopicsUpdate, DeviceTopicUpdateRequest and
-/// UserTopicUpdateRequest. The field is a string: a value Centrifugo sends or accepts which
-/// these do not name is still a valid one.
-/// </summary>
-public static class OpValues
-{
-    /// <summary><c>add</c>.</summary>
-    public const string Add = "add";
-
-    /// <summary><c>remove</c>.</summary>
-    public const string Remove = "remove";
-
-    /// <summary><c>set</c>.</summary>
-    public const string Set = "set";
-}
-
-/// <summary>
 /// The values of the cmp field of FilterNode. The field is a string: a value Centrifugo
 /// sends or accepts which these do not name is still a valid one.
 /// </summary>
@@ -3957,6 +3940,23 @@ public static class PlatformValues
 
     /// <summary><c>web</c>.</summary>
     public const string Web = "web";
+}
+
+/// <summary>
+/// The values of the op field of DeviceTopicsUpdate, DeviceTopicUpdateRequest and
+/// UserTopicUpdateRequest. The field is a string: a value Centrifugo sends or accepts which
+/// these do not name is still a valid one.
+/// </summary>
+public static class OpValues
+{
+    /// <summary><c>add</c>.</summary>
+    public const string Add = "add";
+
+    /// <summary><c>remove</c>.</summary>
+    public const string Remove = "remove";
+
+    /// <summary><c>set</c>.</summary>
+    public const string Set = "set";
 }
 
 /// <summary>

@@ -42,11 +42,12 @@ synced again from the tag before this version is released.
   `MetaUpdate` are sent whenever set, even empty - an empty one detaches the
   devices from their user or clears the setting - and left out when `null`.
 - Constants for the fields with a fixed set of values, generated from the
-  protos: `ProviderValues`, `PlatformValues`, `OpValues`, `StatusValues`,
-  `KeyModeValues`, `CmpValues`, `FilterNodeOpValues`, and in
-  `Centrifugal.Cent.Proxy` `ProtocolValues`, `EncodingValues`, `AllowValues`,
-  `MatchValues`, `KeyModeValues`, `TypeValues`, `OpValues`, `CmpValues`. The
-  fields stay strings.
+  protos under the names spec 0.3 pins for every SDK: `ProviderValues`,
+  `PlatformValues`, `OpValues`, `StatusValues`, `KeyModeValues`,
+  `FilterNodeOpValues`, `CmpValues`, and in `Centrifugal.Cent.Proxy`
+  `FilterNodeOpValues`, `CmpValues`, `ProtocolValues`, `EncodingValues`,
+  `AllowValues`, `CapabilityMatchValues`, `KeyModeValues`,
+  `ChannelEventTypeValues`. The fields stay strings.
 - `HistoryAllAsync`, `DeviceListAllAsync`, `DeviceTopicListAllAsync`,
   `UserTopicListAllAsync` and `MapReadStateAllAsync`: every item of a paged
   method as an `IAsyncEnumerable`, a page read when the iteration reaches it.

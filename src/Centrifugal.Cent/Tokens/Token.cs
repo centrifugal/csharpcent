@@ -159,7 +159,7 @@ public sealed class ChannelsCapability
 
     /// <summary>
     /// How <see cref="Channels"/> are matched: null for exact names, <c>wildcard</c> or
-    /// <c>regex</c> - <see cref="Proxy.MatchValues"/>.
+    /// <c>regex</c> - <see cref="Proxy.CapabilityMatchValues"/>.
     /// </summary>
     public string? Match { get; init; }
 }

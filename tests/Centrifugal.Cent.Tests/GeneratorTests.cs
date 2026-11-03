@@ -68,51 +68,71 @@ public sealed class GeneratorTests
     public void AMalformedListFailsTheGeneration(string doc) =>
         Assert.Throws<GeneratorException>(() => Consts.ListedValues([doc]));
 
-    private static List<string> ConstNames(string proto) =>
-        Consts.Groups(Proto.Parse(proto, "test.proto"), _ => true)
+    private static Pins PinsOf(string text) => new("test.txt", text);
+
+    private static List<string> ConstNames(string proto, string pins) =>
+        Consts.Groups(Proto.Parse(proto, "test.proto"), _ => true, PinsOf(pins))
             .SelectMany(g => g.Values.Select(v => g.ClassName + "." + Consts.ValueName(v)))
             .ToList();
 
+    private const string TwoOps = """
+        message A {
+            string op = 1; // One of: add, remove.
+        }
+        message B {
+            string op = 1; // One of: add, remove.
+            string mode = 2; // One of: if_new, ios.
+        }
+        message C {
+            string op = 1; // One of: and, or.
+        }
+        """;
+
+    // Constants are named as the list pins them: by Message.field, or *.field for the field
+    // in every message which has it.
     [Fact]
-    public void ConstantsAreNamedByFieldAndValue()
+    public void ConstantsAreNamedAsPinned()
     {
-        var names = ConstNames("""
-            message A {
-                string op = 1; // One of: add, remove.
-            }
-            message B {
-                string op = 1; // One of: add, remove.
-            }
-            message C {
-                string op = 1; // One of: and, or.
-                string mode = 2; // One of: if_new, ios.
-            }
-            """);
-        Assert.Equal(["OpValues.Add", "OpValues.Remove", "COpValues.And", "COpValues.Or", "ModeValues.IfNew", "ModeValues.IOS"], names);
+        Assert.Equal(
+            ["OpValues.Add", "OpValues.Remove", "ModeValues.IfNew", "ModeValues.IOS", "COpValues.And", "COpValues.Or"],
+            ConstNames(TwoOps, "A.op Op\nB.op Op\n*.mode Mode\nC.op COp\n"));
     }
 
-    [Fact]
-    public void ATieNamesEveryGroupByItsMessage()
+    [Theory]
+    [InlineData("A.op Op\nB.op Op\n*.mode Mode\n", "C.op lists its values but has no pinned name")]
+    [InlineData("A.op Op\nB.op Op\n*.mode Mode\nC.op COp\nD.op DOp\n", "D.op names no field")]
+    [InlineData("A.op Op\nB.op Op\n*.mode Mode\nC.op Op\n", "C.op lists and, or, but Op names add, remove")]
+    [InlineData("A.op Op\nA.op Op2\n", "A.op pinned twice")]
+    [InlineData("A.op\n", "is not a selector and a name")]
+    public void AnUnpinnedFieldAnUnusedPinOrANameOverDifferentValuesFails(string pins, string message)
     {
-        var names = ConstNames("""
-            message A {
-                string op = 1; // One of: add.
-            }
-            message C {
-                string op = 1; // One of: and.
-            }
-            """);
-        Assert.Equal(["AOpValues.Add", "COpValues.And"], names);
+        var e = Assert.Throws<GeneratorException>(() => ConstNames(TwoOps, pins));
+        Assert.Contains(message, e.Message, StringComparison.Ordinal);
     }
+
+    // The names spec 3.3 pins for every SDK, as C# spells them.
+    [Fact]
+    public void TheProtosConstantsHaveThePinnedNames()
+    {
+        Assert.Equal(
+            ["FilterNodeOpValues", "CmpValues", "ProviderValues", "PlatformValues", "OpValues", "StatusValues", "KeyModeValues"],
+            Consts.Groups(Parse("api.proto"), _ => true, PinsFile("constants_api.txt")).Select(g => g.ClassName));
+        Assert.Equal(
+            ["FilterNodeOpValues", "CmpValues", "ProtocolValues", "EncodingValues", "AllowValues", "CapabilityMatchValues", "KeyModeValues", "ChannelEventTypeValues"],
+            Consts.Groups(Parse("proxy.proto"), _ => true, PinsFile("constants_proxy.txt")).Select(g => g.ClassName));
+    }
+
+    private static Schema Parse(string proto) => Proto.Parse(File.ReadAllText(Path.Combine(Root(), "proto", proto)), proto);
+
+    private static Pins PinsFile(string file) => new(file, File.ReadAllText(Path.Combine(Root(), "tools", "Generator", file)));
 
     // Every value the protos list has its constant, equal to it.
     [Theory]
-    [InlineData("api.proto", "Centrifugal.Cent")]
-    [InlineData("proxy.proto", "Centrifugal.Cent.Proxy")]
-    public void EveryListedValueIsAConstant(string proto, string ns)
+    [InlineData("api.proto", "constants_api.txt", "Centrifugal.Cent")]
+    [InlineData("proxy.proto", "constants_proxy.txt", "Centrifugal.Cent.Proxy")]
+    public void EveryListedValueIsAConstant(string proto, string pins, string ns)
     {
-        var s = Proto.Parse(File.ReadAllText(Path.Combine(Root(), "proto", proto)), proto);
-        var groups = Consts.Groups(s, _ => true);
+        var groups = Consts.Groups(Parse(proto), _ => true, PinsFile(pins));
         Assert.NotEmpty(groups);
         foreach (var g in groups)
         {
@@ -125,5 +145,8 @@ public sealed class GeneratorTests
         }
         Assert.Equal("ios", PlatformValues.IOS);
         Assert.Equal("if_new", Proxy.KeyModeValues.IfNew);
+        Assert.Equal("occupied", Proxy.ChannelEventTypeValues.Occupied);
+        Assert.Equal("wildcard", Proxy.CapabilityMatchValues.Wildcard);
+        Assert.Equal("and", Proxy.FilterNodeOpValues.And);
     }
 }

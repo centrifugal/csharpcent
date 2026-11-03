@@ -540,7 +540,7 @@ internal static class ApiEmitter
         return !Envelopes.Any(c => s.Find(c)!.Fields.Any(f => OmittedCommands.Contains(f.Name) && f.Type == name));
     }
 
-    public static string Types(Schema s, SortedSet<string> required)
+    public static string Types(Schema s, SortedSet<string> required, Pins pins)
     {
         Prepare(s);
         var cmds = Commands(s);
@@ -573,7 +573,7 @@ internal static class ApiEmitter
         }
         try
         {
-            Consts.Emit(w, s, n => Emitted(s, n));
+            Consts.Emit(w, s, n => Emitted(s, n), pins);
         }
         catch (GeneratorException e)
         {
@@ -832,7 +832,7 @@ internal static class ProxyEmitter
     /// <summary>Proxy messages renamed in C#: <c>Error</c> would read as any error.</summary>
     private static readonly Dictionary<string, string> Renamed = new() { ["Error"] = "ProxyError" };
 
-    public static string Generate(Schema s)
+    public static string Generate(Schema s, Pins pins)
     {
         var methods = s.Methods.Where(m => !m.Streaming).ToList();
         foreach (var m in methods)
@@ -894,7 +894,7 @@ internal static class ProxyEmitter
         // request's fields with, or sets in a result.
         try
         {
-            Consts.Emit(w, s, n => used.Contains(n) && !responses.Contains(n) && Cent.Generator.Types.WrapperScalar(s, n) is null);
+            Consts.Emit(w, s, n => used.Contains(n) && !responses.Contains(n) && Cent.Generator.Types.WrapperScalar(s, n) is null, pins);
         }
         catch (GeneratorException e)
         {
@@ -948,25 +948,81 @@ internal static class ProxyEmitter
 }
 
 /// <summary>
-/// The constants of a string field with listed values: the values, and the messages whose
-/// field of that name lists exactly them.
+/// The constants of the fields one pinned name covers: the values they list, and the
+/// messages holding them.
 /// </summary>
-internal sealed class ConstGroup(string field, List<string> values)
+internal sealed class ConstGroup(string name, string field, List<string> values)
 {
+    /// <summary>The pinned name, such as <c>Op</c>.</summary>
+    public string Name { get; } = name;
+
+    /// <summary>A field's proto name, for the doc comment.</summary>
     public string Field { get; } = field;
+
     public List<string> Values { get; } = values;
     public List<string> Messages { get; } = [];
 
-    /// <summary>The message's name, set when the field's name alone would be ambiguous.</summary>
-    public string Prefix { get; set; } = "";
-
     /// <summary>The static class holding the constants: <c>OpValues</c>, <c>FilterNodeOpValues</c>.</summary>
-    public string ClassName => Prefix + Names.Pascal(Field) + "Values";
+    public string ClassName => Name + "Values";
+}
+
+/// <summary>
+/// The constant names spec 3.3 pins: by <c>Message.field</c>, or by <c>*.field</c> for the
+/// field in every message which has it - <c>tools/Generator/constants_api.txt</c> and
+/// <c>constants_proxy.txt</c>.
+/// </summary>
+internal sealed class Pins
+{
+    private readonly Dictionary<string, string> _names = [];
+    private readonly HashSet<string> _used = [];
+    private readonly List<string> _order = [];
+
+    public Pins(string file, string text)
+    {
+        File = file;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+            {
+                continue;
+            }
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2)
+            {
+                throw new GeneratorException($"{file}: \"{line}\" is not a selector and a name");
+            }
+            if (!_names.TryAdd(parts[0], parts[1]))
+            {
+                throw new GeneratorException($"{file}: {parts[0]} pinned twice");
+            }
+            _order.Add(parts[0]);
+        }
+    }
+
+    public string File { get; }
+
+    /// <summary>The pinned name of a message's field, or null.</summary>
+    public string? Name(string message, string field)
+    {
+        foreach (var selector in new[] { message + "." + field, "*." + field })
+        {
+            if (_names.TryGetValue(selector, out var name))
+            {
+                _used.Add(selector);
+                return name;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The selectors no field used.</summary>
+    public IEnumerable<string> Unused => _order.Where(s => !_used.Contains(s));
 }
 
 /// <summary>
 /// Constants for the string fields whose comments list their values, in the sentence
-/// <c>One of: add, remove, set.</c> (spec 3.3).
+/// <c>One of: add, remove, set.</c>, named as spec 3.3 pins them.
 /// </summary>
 internal static partial class Consts
 {
@@ -1020,15 +1076,14 @@ internal static partial class Consts
 
     /// <summary>
     /// The fields with listed values of the messages <paramref name="include"/> accepts, in
-    /// groups, in the order of the proto. Where fields of one name list different values in
-    /// different messages, the set listed in the most messages keeps the short name and the
-    /// others are named by their message too - <c>OpValues</c> for the topic updates,
-    /// <c>FilterNodeOpValues</c> for <c>FilterNode</c> - and a tie names all of them so.
+    /// groups by their pinned names, in the order of the proto. A field without a pinned
+    /// name, a pin no field uses, and one name over different values all fail the
+    /// generation: a person then names the field in spec 3.3's table and the list.
     /// </summary>
-    public static List<ConstGroup> Groups(Schema s, Func<string, bool> include)
+    public static List<ConstGroup> Groups(Schema s, Func<string, bool> include, Pins pins)
     {
-        var byField = new Dictionary<string, List<ConstGroup>>();
-        var order = new List<string>();
+        var byName = new Dictionary<string, ConstGroup>();
+        var result = new List<ConstGroup>();
         foreach (var m in s.Messages.Where(m => include(m.Name)))
         {
             foreach (var f in m.Fields)
@@ -1050,45 +1105,31 @@ internal static partial class Consts
                 {
                     throw new GeneratorException($"{m.Name}.{f.Name}: values are listed for strings only");
                 }
-                if (!byField.TryGetValue(f.Name, out var groups))
+                var name = pins.Name(m.Name, f.Name)
+                    ?? throw new GeneratorException($"{m.Name}.{f.Name} lists its values but has no pinned name: name it in {pins.File} and in spec.md section 3.3's table");
+                if (!byName.TryGetValue(name, out var g))
                 {
-                    byField[f.Name] = groups = [];
-                    order.Add(f.Name);
+                    byName[name] = g = new ConstGroup(name, f.Name, values);
+                    result.Add(g);
                 }
-                var g = groups.Find(g => g.Values.SequenceEqual(values));
-                if (g is null)
+                else if (!g.Values.SequenceEqual(values))
                 {
-                    groups.Add(g = new ConstGroup(f.Name, values));
+                    throw new GeneratorException($"{m.Name}.{f.Name} lists {string.Join(", ", values)}, but {name} names {string.Join(", ", g.Values)} in {string.Join(", ", g.Messages)}");
                 }
                 g.Messages.Add(m.Name);
             }
         }
-        var result = new List<ConstGroup>();
-        foreach (var name in order)
+        if (pins.Unused.FirstOrDefault() is { } unused)
         {
-            var groups = byField[name];
-            if (groups.Count > 1)
-            {
-                var most = groups.MaxBy(g => g.Messages.Count)!;
-                var tie = groups.Any(g => g != most && g.Messages.Count == most.Messages.Count);
-                foreach (var g in groups.Where(g => g != most || tie))
-                {
-                    if (g.Messages.Count > 1)
-                    {
-                        throw new GeneratorException($"field {name} lists {string.Join(", ", g.Values)} in {string.Join(", ", g.Messages)} and other values elsewhere: cannot name its constants");
-                    }
-                    g.Prefix = g.Messages[0];
-                }
-            }
-            result.AddRange(groups);
+            throw new GeneratorException($"{pins.File}: {unused} names no field with listed values: remove it, and from spec.md section 3.3's table");
         }
         return result;
     }
 
     /// <summary>Writes a static class of constants per group.</summary>
-    public static void Emit(CodeWriter w, Schema s, Func<string, bool> include)
+    public static void Emit(CodeWriter w, Schema s, Func<string, bool> include, Pins pins)
     {
-        foreach (var g in Groups(s, include))
+        foreach (var g in Groups(s, include, pins))
         {
             var where = g.Messages.Count == 1 ? g.Messages[0] : string.Join(", ", g.Messages[..^1]) + " and " + g.Messages[^1];
             w.Line();

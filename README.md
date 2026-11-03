@@ -87,7 +87,8 @@ A string field with a fixed set of values has a constant per value, generated
 from the protos: `ProviderValues.Fcm`, `PlatformValues.IOS`, `OpValues.Add`,
 `StatusValues.Delivered`, `KeyModeValues.IfNew`, `CmpValues.Eq`,
 `FilterNodeOpValues.And`, and in the proxy `EncodingValues.Binary`,
-`TypeValues.Occupied` and the rest. The fields stay strings: a value Centrifugo
+`ChannelEventTypeValues.Occupied`, `CapabilityMatchValues.Wildcard` and the
+rest. The fields stay strings: a value Centrifugo
 adds is sent before the SDK names it.
 
 ```csharp

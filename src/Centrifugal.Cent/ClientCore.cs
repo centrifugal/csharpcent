@@ -360,7 +360,7 @@ internal sealed class ClientCore : IDisposable
             return status switch
             {
                 401 => new CentUnauthorizedException(kept, headers),
-                >= 300 and < 400 => new CentHttpException(status, kept, headers, "Centrifugo's API never redirects: check http or https in the endpoint"),
+                >= 300 and < 400 => new CentHttpException(status, kept, headers, "a redirect, which the SDK does not follow: check http or https and the path of the endpoint - Centrifugo's API never redirects a call, but its router redirects a path not in canonical form, one with a doubled slash say"),
                 404 when proOnly => new CentHttpException(status, kept, headers, $"{method} is Centrifugo PRO only: the server is likely Centrifugo OSS"),
                 404 => new CentHttpException(status, kept, headers, "is the endpoint the API's base URL, such as http://localhost:8000/api?"),
                 _ => new CentHttpException(status, kept, headers),

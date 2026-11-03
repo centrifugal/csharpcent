@@ -229,7 +229,8 @@ public partial class CentClient
     /// A channel which failed for good is not retried, and a failure no retry can fix - a
     /// 401, an invalid request - stops it at once. No attempt starts once the call's
     /// timeout has passed. The memory, Redis and PostgreSQL brokers keep idempotency keys,
-    /// five minutes by default; the NATS broker ignores them, and a retry publishes again.
+    /// five minutes by default, and the Redis plus NATS broker does through Redis; the plain
+    /// NATS broker ignores them, and a retry publishes again.
     /// </remarks>
     /// <param name="request">The request.</param>
     /// <param name="options">The retries: 2 attempts by default.</param>

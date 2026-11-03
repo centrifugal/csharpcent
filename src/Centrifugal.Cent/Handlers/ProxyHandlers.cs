@@ -22,6 +22,12 @@ namespace Centrifugal.Cent.Proxy;
 /// internal error, and for refresh and sub refresh asks again a minute later.
 /// </para>
 /// <para>
+/// A handler answers with exactly one of result, error and disconnect: a function returning
+/// null fails with 500 too. Centrifugo would take a response with none of them as accepting
+/// a subscribe, publish, rpc, map publish or map remove as sent; as refusing a connect,
+/// unless anonymous connections are allowed; and as a refresh or sub refresh which expired.
+/// </para>
+/// <para>
 /// Keep proxy endpoints reachable by Centrifugo only: whoever can call them can claim to be
 /// any user.
 /// </para>

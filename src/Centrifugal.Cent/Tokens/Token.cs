@@ -428,7 +428,7 @@ public static class Token
     private static void Message<T>(Utf8JsonWriter w, string name, T? value)
         where T : class
     {
-        if (value is not null)
+        if (value is not null and not IWireMessage { IsZero: true })
         {
             w.WritePropertyName(name);
             JsonSerializer.Serialize(w, value, Wire.Info<T>());

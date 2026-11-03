@@ -19,7 +19,7 @@ namespace Centrifugal.Cent.Proxy;
 /// compares one tag: it sets key, cmp and val or vals, and leaves op empty. A
 /// logical node combines its nodes: it sets op and nodes only.
 /// </summary>
-public sealed partial class FilterNode
+public sealed partial class FilterNode : IWireMessage
 {
     /// <summary>
     /// Op is the logical operation. Empty for a leaf node. One of: and, or, not.
@@ -58,13 +58,23 @@ public sealed partial class FilterNode
     /// </summary>
     [JsonPropertyName("nodes")]
     public IList<FilterNode>? Nodes { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Op) &&
+        string.IsNullOrEmpty(Key) &&
+        string.IsNullOrEmpty(Cmp) &&
+        string.IsNullOrEmpty(Val) &&
+        Vals is not { Count: > 0 } &&
+        Nodes is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// Disconnect, returned instead of a result, disconnects the client. Only
 /// Connect, Subscribe, Publish, RPC, MapPublish and MapRemove honour it.
 /// </summary>
-public sealed partial class Disconnect
+public sealed partial class Disconnect : IWireMessage
 {
     /// <summary>
     /// Code must be in the range [4000, 4999], which Centrifugo leaves to
@@ -80,6 +90,12 @@ public sealed partial class Disconnect
     /// </summary>
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Code == 0 &&
+        string.IsNullOrEmpty(Reason);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -88,7 +104,7 @@ public sealed partial class Disconnect
 /// it to the client; SharedPollRefresh and NotifyChannelState take it as a
 /// failed request.
 /// </summary>
-public sealed partial class ProxyError
+public sealed partial class ProxyError : IWireMessage
 {
     /// <summary>
     /// Code must be in the range [400, 1999], which Centrifugo leaves to
@@ -110,6 +126,13 @@ public sealed partial class ProxyError
     /// </summary>
     [JsonPropertyName("temporary")]
     public bool Temporary { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Code == 0 &&
+        string.IsNullOrEmpty(Message) &&
+        !Temporary;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -182,7 +205,7 @@ public sealed partial class ConnectRequest
 /// SubscribeOptions are the options of a server-side subscription returned in
 /// ConnectResult.subs.
 /// </summary>
-public sealed partial class SubscribeOptions
+public sealed partial class SubscribeOptions : IWireMessage
 {
     /// <summary>
     /// ExpireAt is when the subscription expires, in Unix seconds. Zero means it
@@ -245,12 +268,24 @@ public sealed partial class SubscribeOptions
     /// </summary>
     [JsonPropertyName("cache_recover")]
     public bool CacheRecover { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        WireMessage.IsZero(Override) &&
+        WireMessage.IsZero(ServerTagsFilter) &&
+        !CacheRecover;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// ConnectResult accepts the connection.
 /// </summary>
-public sealed partial class ConnectResult
+public sealed partial class ConnectResult : IWireMessage
 {
     /// <summary>
     /// User is the ID of the user the connection belongs to. Empty accepts an
@@ -336,6 +371,22 @@ public sealed partial class ConnectResult
     /// </summary>
     [JsonPropertyName("profile")]
     public string? Profile { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        Channels is not { Count: > 0 } &&
+        Subs is not { Count: > 0 } &&
+        Meta is null &&
+        Caps is not { Count: > 0 } &&
+        Labels is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Profile);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -343,7 +394,7 @@ public sealed partial class ConnectResult
 /// operation in a channel when any of its capabilities both allows the
 /// operation and matches the channel. Centrifugo PRO only.
 /// </summary>
-public sealed partial class ChannelsCapability
+public sealed partial class ChannelsCapability : IWireMessage
 {
     /// <summary>
     /// Channels are the channels, or channel patterns, it applies to.
@@ -364,6 +415,13 @@ public sealed partial class ChannelsCapability
     /// </summary>
     [JsonPropertyName("match")]
     public string? Match { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Channels is not { Count: > 0 } &&
+        Allow is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Match);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -421,7 +479,7 @@ public sealed partial class RefreshRequest
 /// <summary>
 /// RefreshResult extends the connection, or ends it.
 /// </summary>
-public sealed partial class RefreshResult
+public sealed partial class RefreshResult : IWireMessage
 {
     /// <summary>
     /// Expired disconnects the client: its connection has expired.
@@ -460,6 +518,16 @@ public sealed partial class RefreshResult
     /// </summary>
     [JsonPropertyName("caps")]
     public IList<ChannelsCapability>? Caps { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Expired &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Meta is null &&
+        Caps is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -543,7 +611,7 @@ public sealed partial class SubscribeRequest
 /// SubscribeOptionOverride overrides channel options of the namespace for one
 /// subscription. An unset field keeps the namespace's value.
 /// </summary>
-public sealed partial class SubscribeOptionOverride
+public sealed partial class SubscribeOptionOverride : IWireMessage
 {
     /// <summary>
     /// Presence overrides the namespace's presence option.
@@ -580,12 +648,21 @@ public sealed partial class SubscribeOptionOverride
     [JsonPropertyName("force_push_join_leave")]
     [JsonConverter(typeof(WrapperConverter<bool>))]
     public bool? ForcePushJoinLeave { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Presence is null &&
+        JoinLeave is null &&
+        ForceRecovery is null &&
+        ForcePositioning is null &&
+        ForcePushJoinLeave is null;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// SubscribeResult accepts the subscription.
 /// </summary>
-public sealed partial class SubscribeResult
+public sealed partial class SubscribeResult : IWireMessage
 {
     /// <summary>
     /// ExpireAt is when the subscription expires, in Unix seconds, unless
@@ -643,6 +720,18 @@ public sealed partial class SubscribeResult
     /// </summary>
     [JsonPropertyName("server_tags_filter")]
     public FilterNode? ServerTagsFilter { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        WireMessage.IsZero(Override) &&
+        Allow is not { Count: > 0 } &&
+        WireMessage.IsZero(ServerTagsFilter);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -720,7 +809,7 @@ public sealed partial class PublishRequest
 /// PublishResult accepts the publication. Fields left unset keep what the
 /// client sent, or the defaults.
 /// </summary>
-public sealed partial class PublishResult
+public sealed partial class PublishResult : IWireMessage
 {
     /// <summary>
     /// Data replaces the data the client sent.
@@ -776,6 +865,18 @@ public sealed partial class PublishResult
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        !SkipHistory &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -859,7 +960,7 @@ public sealed partial class MapPublishRequest
 /// MapPublishResult accepts the publication, even when empty. Fields left
 /// unset keep what the client sent, or the defaults.
 /// </summary>
-public sealed partial class MapPublishResult
+public sealed partial class MapPublishResult : IWireMessage
 {
     /// <summary>
     /// Key replaces the key the client sent: to force a key the server derives,
@@ -940,6 +1041,22 @@ public sealed partial class MapPublishResult
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        Tags is not { Count: > 0 } &&
+        Score == 0 &&
+        string.IsNullOrEmpty(KeyMode) &&
+        StreamData is null &&
+        string.IsNullOrEmpty(B64StreamData) &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1010,7 +1127,7 @@ public sealed partial class MapRemoveRequest
 /// MapRemoveResult accepts the removal, even when empty. Fields left unset
 /// keep what the client sent, or the defaults.
 /// </summary>
-public sealed partial class MapRemoveResult
+public sealed partial class MapRemoveResult : IWireMessage
 {
     /// <summary>
     /// Key replaces the key the client sent.
@@ -1031,6 +1148,13 @@ public sealed partial class MapRemoveResult
     /// </summary>
     [JsonPropertyName("idempotency_key")]
     public string? IdempotencyKey { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1107,7 +1231,7 @@ public sealed partial class RpcRequest
 /// <summary>
 /// RPCResult is the call's result.
 /// </summary>
-public sealed partial class RpcResult
+public sealed partial class RpcResult : IWireMessage
 {
     /// <summary>
     /// Data is the result sent to the client: any JSON.
@@ -1121,6 +1245,12 @@ public sealed partial class RpcResult
     /// </summary>
     [JsonPropertyName("b64data")]
     public string? B64Data { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Data is null &&
+        string.IsNullOrEmpty(B64Data);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1184,7 +1314,7 @@ public sealed partial class SubRefreshRequest
 /// <summary>
 /// SubRefreshResult extends the subscription, or ends it.
 /// </summary>
-public sealed partial class SubRefreshResult
+public sealed partial class SubRefreshResult : IWireMessage
 {
     /// <summary>
     /// Expired ends the subscription: it has expired.
@@ -1218,6 +1348,15 @@ public sealed partial class SubRefreshResult
     /// </summary>
     [JsonPropertyName("server_tags_filter")]
     public FilterNode? ServerTagsFilter { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Expired &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        WireMessage.IsZero(ServerTagsFilter);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1237,7 +1376,7 @@ public sealed partial class NotifyCacheEmptyRequest
 /// <summary>
 /// The NotifyCacheEmptyResult message of the Centrifugo proxy.
 /// </summary>
-public sealed partial class NotifyCacheEmptyResult
+public sealed partial class NotifyCacheEmptyResult : IWireMessage
 {
     /// <summary>
     /// Populated tells Centrifugo that the backend published into the channel,
@@ -1245,6 +1384,11 @@ public sealed partial class NotifyCacheEmptyResult
     /// </summary>
     [JsonPropertyName("populated")]
     public bool Populated { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Populated;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1289,8 +1433,12 @@ public sealed partial class ChannelEvent
 /// <summary>
 /// The NotifyChannelStateResult message of the Centrifugo proxy.
 /// </summary>
-public sealed partial class NotifyChannelStateResult
+public sealed partial class NotifyChannelStateResult : IWireMessage
 {
+
+    bool IWireMessage.IsZero => true;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1335,7 +1483,7 @@ public sealed partial class SharedPollRefreshItem
 /// SharedPollRefreshResult carries the items' current data. An item left out
 /// is unchanged.
 /// </summary>
-public sealed partial class SharedPollRefreshResult
+public sealed partial class SharedPollRefreshResult : IWireMessage
 {
     /// <summary>
     /// Items are the items' current data.
@@ -1352,12 +1500,18 @@ public sealed partial class SharedPollRefreshResult
     /// </summary>
     [JsonPropertyName("epoch")]
     public string? Epoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Items is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Epoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// SharedPollRefreshResultItem is an item's current data.
 /// </summary>
-public sealed partial class SharedPollRefreshResultItem
+public sealed partial class SharedPollRefreshResultItem : IWireMessage
 {
     /// <summary>
     /// Key is the item's key.
@@ -1394,6 +1548,15 @@ public sealed partial class SharedPollRefreshResultItem
     [JsonPropertyName("prev_data")]
     [JsonConverter(typeof(PayloadConverter))]
     public object? PrevData { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        Version == 0 &&
+        !Removed &&
+        PrevData is null;
+
+    string? IWireMessage.Missing() => null;
 }
 
 [JsonSerializable(typeof(ConnectRequest))]

@@ -70,10 +70,30 @@ internal static partial class Names
     private static partial Regex RequiredMark();
 
     /// <summary>
-    /// A field the proto marks plainly "Required." - not "Required unless ..." - is a
-    /// <c>required</c> member (spec 3.3).
+    /// A field the proto marks plainly "Required." - not "Required unless ..." or "Required
+    /// when ..." - is a <c>required</c> member (spec 3.3).
     /// </summary>
     public static bool IsRequired(Field f) => RequiredMark().IsMatch(string.Join(' ', f.Doc));
+
+    /// <summary>
+    /// A required field whose comment gives its empty value a meaning after "Required." -
+    /// <c>"" clears it</c>, <c>An empty map clears it.</c> It stays a <c>required</c> member,
+    /// but is not checked before sending: empty is a value of it (spec 3.3).
+    /// </summary>
+    public static bool EmptyHasMeaning(Field f)
+    {
+        var doc = string.Join(' ', f.Doc);
+        var at = RequiredMark().Match(doc);
+        if (!at.Success)
+        {
+            return false;
+        }
+        var after = doc[(at.Index + at.Length)..];
+        return after.Contains("\"\"", StringComparison.Ordinal) || after.Contains("empty", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A required field the client checks before sending (spec 3.5).</summary>
+    public static bool IsChecked(Field f) => IsRequired(f) && !EmptyHasMeaning(f);
 }
 
 /// <summary>Code with indentation.</summary>
@@ -138,6 +158,15 @@ internal static class Types
         s.Find(type) is { } m && m.Name.EndsWith("Value", StringComparison.Ordinal) && m.Fields is [{ Name: "value" } f]
             ? f.Type
             : null;
+
+    /// <summary>
+    /// A presence wrapper (spec 2): a message with one field which Centrifugo reads by whether
+    /// it is there - a <c>*Value</c> message whose field is <c>value</c>, or one whose only
+    /// field's comment gives its empty value a meaning, as <c>device_update</c>'s updates. It
+    /// is sent whenever it is set, even empty; null leaves it out.
+    /// </summary>
+    public static bool IsPresenceWrapper(Schema s, string type) =>
+        s.Find(type) is { } m && (WrapperScalar(s, type) is not null || m.Fields is [var f] && Names.EmptyHasMeaning(f));
 
     public static string Scalar(string type) => type switch
     {
@@ -269,13 +298,17 @@ internal static class Types
 
     public static List<string> MessageDoc(Message m, string fallback) => m.Doc.Count == 0 ? [fallback] : m.Doc;
 
-    /// <summary>Writes a message as a sealed class: settable when it is sent, init-only when received.</summary>
-    public static void Emit(CodeWriter w, Schema s, Message m, bool input, string fallback, SortedSet<string>? required, string? rename = null)
+    /// <summary>
+    /// Writes a message as a sealed class: settable when it is sent, init-only when received.
+    /// One which is sent says when it is zero - left out of the message holding it - and
+    /// which required field it leaves unset.
+    /// </summary>
+    public static void Emit(CodeWriter w, Schema s, Message m, bool input, string fallback, SortedSet<string>? required, Checks? checks = null)
     {
-        var name = rename ?? m.Name;
+        var name = m.Name;
         w.Line();
         w.Summary(MessageDoc(m, fallback));
-        w.Line($"public sealed partial class {name}");
+        w.Line(input ? $"public sealed partial class {name} : IWireMessage" : $"public sealed partial class {name}");
         w.Line("{");
         var first = true;
         foreach (var f in m.Fields)
@@ -304,7 +337,132 @@ internal static class Types
             var init = cs.Initializer is null ? "" : $" = {cs.Initializer};";
             w.Line($"public {(cs.Required ? "required " : "")}{cs.Type} {cs.Property} {accessor}{init}");
         }
+        if (input)
+        {
+            EmitWire(w, s, m, checks ?? new Checks(s));
+        }
         w.Line("}");
+    }
+
+    /// <summary>The C# condition true when a field of a message which is sent is at its zero value.</summary>
+    private static string ZeroCheck(Schema s, Field f)
+    {
+        var p = Names.Pascal(f.Name);
+        if (f.Repeated || f.MapKey is not null)
+        {
+            return $"{p} is not {{ Count: > 0 }}";
+        }
+        if (f.Type == "string")
+        {
+            return $"string.IsNullOrEmpty({p})";
+        }
+        if (f.Type == "bool")
+        {
+            return $"!{p}";
+        }
+        if (f.Type == "bytes" || WrapperScalar(s, f.Type) is not null)
+        {
+            return $"{p} is null";
+        }
+        if (Proto.Scalars.Contains(f.Type))
+        {
+            return $"{p} == 0";
+        }
+        return $"WireMessage.IsZero({p})";
+    }
+
+    /// <summary>Writes <c>IWireMessage</c>'s members: when the message is zero, and the path of a required field it leaves unset.</summary>
+    private static void EmitWire(CodeWriter w, Schema s, Message m, Checks checks)
+    {
+        w.Line();
+        if (IsPresenceWrapper(s, m.Name))
+        {
+            w.Line("// A presence wrapper: sent whenever it is set, even empty (spec 2).");
+            w.Line("bool IWireMessage.IsZero => false;");
+        }
+        else if (m.Fields.Count == 0)
+        {
+            w.Line("bool IWireMessage.IsZero => true;");
+        }
+        else
+        {
+            var conds = m.Fields.Select(f => ZeroCheck(s, f)).ToList();
+            w.Line("bool IWireMessage.IsZero =>");
+            for (var i = 0; i < conds.Count; i++)
+            {
+                w.Line($"    {conds[i]}{(i == conds.Count - 1 ? ";" : " &&")}");
+            }
+        }
+        w.Line();
+        if (!checks.Needs(m.Name))
+        {
+            w.Line("string? IWireMessage.Missing() => null;");
+            return;
+        }
+        w.Line("string? IWireMessage.Missing()");
+        w.Line("{");
+        foreach (var f in m.Fields)
+        {
+            var p = Names.Pascal(f.Name);
+            if (Names.IsChecked(f))
+            {
+                if (f.Type == "bool" && !f.Repeated && f.MapKey is null)
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: a bool cannot be required: false and unset are one value");
+                }
+                w.Line($"if ({ZeroCheck(s, f)})");
+                w.Line("{");
+                w.Line($"return \"{p}\";");
+                w.Line("}");
+            }
+            if (s.Find(f.Type) is null || IsPresenceWrapper(s, f.Type) || !checks.Needs(f.Type))
+            {
+                continue;
+            }
+            if (f.MapKey is not null)
+            {
+                throw new GeneratorException($"{m.Name}.{f.Name}: a map of messages with required fields is not supported");
+            }
+            if (f.Repeated)
+            {
+                w.Line($"if (WireMessage.MissingIn({p}) is {{ }} {Local(f)})");
+                w.Line("{");
+                w.Line($"return \"{p}\" + {Local(f)};");
+                w.Line("}");
+                continue;
+            }
+            w.Line($"if (WireMessage.Missing({p}) is {{ }} {Local(f)})");
+            w.Line("{");
+            w.Line($"return \"{p}.\" + {Local(f)};");
+            w.Line("}");
+        }
+        w.Line("return null;");
+        w.Line("}");
+    }
+
+    private static string Local(Field f) => "missing" + Names.Pascal(f.Name);
+}
+
+/// <summary>
+/// The messages whose required fields the client checks before sending (spec 3.5): those
+/// with required fields of their own, or holding such a message - directly or in a list.
+/// </summary>
+internal sealed class Checks(Schema s)
+{
+    private readonly Dictionary<string, bool> _need = [];
+
+    public bool Needs(string name)
+    {
+        if (_need.TryGetValue(name, out var v))
+        {
+            return v;
+        }
+        _need[name] = false; // a message holding itself checks nothing more
+        var m = s.Find(name)!;
+        v = m.Fields.Any(f => Names.IsChecked(f)
+            || s.Find(f.Type) is not null && !Types.IsPresenceWrapper(s, f.Type) && Needs(f.Type));
+        _need[name] = v;
+        return v;
     }
 }
 
@@ -325,13 +483,6 @@ internal static class ApiEmitter
     /// of them.
     /// </summary>
     private static readonly string[] Handwritten = ["Error", "BroadcastResult", "Command", "Reply", "BatchRequest", "BatchResponse"];
-
-    /// <summary>Fields a request of the tests sets besides its required ones.</summary>
-    private static readonly Dictionary<string, string> TestExtras = new()
-    {
-        ["publish"] = "Data = RawJson.Parse(\"{}\")",
-        ["broadcast"] = "Data = RawJson.Parse(\"{}\")",
-    };
 
     public static List<ApiCommand> Commands(Schema s)
     {
@@ -391,6 +542,7 @@ internal static class ApiEmitter
         }
         var inputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Request));
         var outputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Result));
+        var checks = new Checks(s);
         var w = new CodeWriter();
         w.Line(Cent.Generator.Types.Header("proto/api.proto"));
         w.Line();
@@ -413,7 +565,7 @@ internal static class ApiEmitter
             {
                 throw new GeneratorException($"api.proto: {m.Name} is both sent and received and has a payload: decide its type");
             }
-            Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo server API.", required);
+            Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo server API.", required, checks);
         }
         return w.ToString();
     }
@@ -531,23 +683,30 @@ internal static class ApiEmitter
 
     private static string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
-    /// <summary>A request with its required fields set, for the tests.</summary>
-    private static string Dummy(Schema s, string type, string? method = null)
+    /// <summary>
+    /// A request with every field set, for the tests: so that the required-field checks let
+    /// it through, nested ones included (spec 15). A message holding itself is not filled
+    /// below its first level.
+    /// </summary>
+    private static string Dummy(Schema s, string type, HashSet<string>? filling = null)
     {
+        filling ??= [];
+        filling.Add(type);
         var m = s.Find(type)!;
         var parts = new List<string>();
-        foreach (var f in m.Fields.Where(Names.IsRequired))
+        foreach (var f in m.Fields)
         {
-            parts.Add($"{Names.Pascal(f.Name)} = {DummyValue(s, f)}");
+            if (filling.Contains(f.Type))
+            {
+                continue;
+            }
+            parts.Add($"{Names.Pascal(f.Name)} = {DummyValue(s, f, filling)}");
         }
-        if (method is not null && TestExtras.TryGetValue(method, out var extra))
-        {
-            parts.Add(extra);
-        }
+        filling.Remove(type);
         return parts.Count == 0 ? $"new {type}()" : $"new {type} {{ {string.Join(", ", parts)} }}";
     }
 
-    private static string DummyValue(Schema s, Field f)
+    private static string DummyValue(Schema s, Field f, HashSet<string> filling)
     {
         string One(string type) => type switch
         {
@@ -555,7 +714,8 @@ internal static class ApiEmitter
             "bool" => "true",
             "bytes" => "RawJson.Parse(\"{}\")",
             "int32" or "int64" or "uint32" or "uint64" or "double" or "float" => "1",
-            _ => Dummy(s, type),
+            _ when Cent.Generator.Types.WrapperScalar(s, type) is { } inner => One(inner),
+            _ => Dummy(s, type, filling),
         };
         if (f.MapKey is not null)
         {
@@ -597,7 +757,7 @@ internal static class ApiEmitter
         w.Line("var ct = TestContext.Current.CancellationToken;");
         foreach (var c in cmds)
         {
-            w.Line($"await client.{c.Name}Async({Dummy(s, c.Request, c.Method)}, ct);");
+            w.Line($"await client.{c.Name}Async({Dummy(s, c.Request)}, ct);");
         }
         w.Line("Assert.Equal(Methods, fake.Paths.ConvertAll(p => p[\"/api/\".Length..]));");
         w.Line("}");
@@ -612,7 +772,7 @@ internal static class ApiEmitter
         w.Line("{");
         foreach (var c in cmds)
         {
-            w.Line($"batch.{c.Name}({Dummy(s, c.Request, c.Method)}),");
+            w.Line($"batch.{c.Name}({Dummy(s, c.Request)}),");
         }
         w.Line("};");
         w.Line("await batch.SendAsync(TestContext.Current.CancellationToken);");
@@ -628,7 +788,7 @@ internal static class ApiEmitter
         w.Line("{");
         foreach (var c in cmds)
         {
-            w.Line($"Command.{c.Name}({Dummy(s, c.Request, c.Method)}),");
+            w.Line($"Command.{c.Name}({Dummy(s, c.Request)}),");
         }
         w.Line("};");
         w.Line("Assert.Equal(Methods, commands.ConvertAll(c => c.Method));");

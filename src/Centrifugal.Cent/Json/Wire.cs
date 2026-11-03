@@ -49,9 +49,9 @@ internal static class Wire
     }
 
     /// <summary>
-    /// A field left at its zero value is not sent (spec 2). A nullable field -
-    /// a payload, a message, a <c>BoolValue</c> - is left out only when null: a
-    /// <c>false</c> it holds is sent.
+    /// A field left at its zero value is not sent (spec 2), a message too when every field in
+    /// it is zero - but a presence wrapper, sent whenever it is set, even empty. A payload or
+    /// a <c>BoolValue</c> is left out only when null: a <c>false</c> it holds is sent.
     /// </summary>
     private static void LeaveOutZeroValues(JsonTypeInfo type)
     {
@@ -82,7 +82,12 @@ internal static class Wire
             }
             else
             {
-                p.ShouldSerialize = static (_, v) => v is not null;
+                p.ShouldSerialize = static (_, v) => v switch
+                {
+                    null => false,
+                    IWireMessage m => !m.IsZero,
+                    _ => true,
+                };
             }
         }
     }

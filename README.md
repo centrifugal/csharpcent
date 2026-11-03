@@ -266,9 +266,8 @@ Idempotency keys:
 - Centrifugo remembers a key per channel, five minutes by default: a second
   publication under the same key is not published, so a key derived from an
   entity must also name the event - `order-42-paid`, not `order-42`;
-- the memory, Redis and PostgreSQL brokers keep keys, and the Redis plus NATS
-  broker does through Redis; the plain NATS broker ignores them, and a retry
-  publishes again.
+- the memory, Redis and PostgreSQL brokers keep keys; the NATS broker ignores
+  them, so a retry publishes again.
 
 ## Broadcast and batch
 
@@ -380,8 +379,8 @@ builder; elsewhere, give `HttpClient` to change any of that. The SDK never
 changes a client it is given: credentials and headers go on each request.
 
 Mind a resilience handler which retries requests: it would publish again a
-publication whose reply was lost - twice on the plain NATS broker, which
-ignores idempotency keys - and its timeouts would cut the SDK's deadline short. Disable
+publication whose reply was lost - twice on the NATS broker, which ignores
+idempotency keys - and its timeouts would cut the SDK's deadline short. Disable
 its retries of `POST`, and retry with `Retry` and idempotency keys instead:
 
 ```csharp

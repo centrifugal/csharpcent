@@ -54,9 +54,9 @@ synced again from the tag before this version is released.
 
 ### Fixed
 
-- The docs: the Redis plus NATS broker keeps idempotency keys; a consumer drops
-  a string payload where the method goes apart from it; what Centrifugo makes of
-  a proxy response with none of result, error and disconnect.
+- The docs: a consumer drops a string payload where the method goes apart from
+  it; what Centrifugo makes of a proxy response with none of result, error and
+  disconnect.
 
 ## [0.1.0]
 

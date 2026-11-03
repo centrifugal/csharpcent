@@ -13,7 +13,7 @@ namespace Microsoft.Extensions.DependencyInjection;
 /// </summary>
 /// <remarks>
 /// A resilience handler which retries requests would publish again a publication whose
-/// reply was lost - twice on the plain NATS broker, which ignores idempotency keys - and its
+/// reply was lost - twice on the NATS broker, which ignores idempotency keys - and its
 /// timeouts would cut the SDK's deadline short. Disable its retries of <c>POST</c>, as
 /// <c>.AddStandardResilienceHandler(o =&gt; o.Retry.DisableForUnsafeHttpMethods())</c> does,
 /// and retry with <see cref="Retry"/> and idempotency keys instead.

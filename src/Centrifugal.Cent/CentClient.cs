@@ -15,11 +15,13 @@ namespace Centrifugal.Cent;
 /// whether another attempt may succeed.
 /// </para>
 /// <para>
-/// A call ends at its deadline: <see cref="CentClientOptions.RequestTimeout"/>, or the
-/// timeout of <see cref="WithTimeout"/> - connecting, sending and reading the reply
-/// included - and throws <see cref="CentTimeoutException"/> then. Its
-/// <see cref="CancellationToken"/> cancels it sooner, throwing
-/// <see cref="OperationCanceledException"/>.
+/// Every call ends at its deadline: <see cref="CentClientOptions.RequestTimeout"/>, or the
+/// timeout of <see cref="WithTimeout"/>, which replaces it - connecting, sending and
+/// reading the reply included - and throws <see cref="CentTimeoutException"/> then. Its
+/// <see cref="CancellationToken"/> only shortens it, never extends it: a call made with the
+/// token of a request which lives for minutes still gives up on a stuck Centrifugo at its
+/// timeout, throwing <see cref="OperationCanceledException"/> when the token is cancelled
+/// first.
 /// </para>
 /// </remarks>
 /// <example>
@@ -41,6 +43,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
 {
     private readonly ClientCore _core;
     private readonly TimeSpan _timeout;
+
+    // Whether the timeout is a view's own, from WithTimeout, rather than RequestTimeout.
+    private readonly bool _ownTimeout;
 
     /// <summary>Creates a client.</summary>
     /// <param name="options">The configuration, validated now.</param>
@@ -69,18 +74,21 @@ public partial class CentClient : IAsyncDisposable, IDisposable
         _core = null!;
     }
 
-    private CentClient(ClientCore core, TimeSpan timeout)
+    private CentClient(ClientCore core, TimeSpan timeout, bool ownTimeout)
     {
         _core = core;
         _timeout = timeout;
+        _ownTimeout = ownTimeout;
     }
 
-    /// <summary>The timeout of this client's calls.</summary>
+    /// <summary>The timeout of this client's calls: <see cref="CentClientOptions.RequestTimeout"/>, or <see cref="WithTimeout"/>'s.</summary>
     public virtual TimeSpan Timeout => _timeout;
 
     /// <summary>
     /// Returns a client whose calls have another timeout, sharing everything else with this
-    /// one: its connections, automatic batching, and <see cref="CloseAsync"/>.
+    /// one: its connections, automatic batching, and <see cref="CloseAsync"/>. The timeout
+    /// replaces <see cref="CentClientOptions.RequestTimeout"/> for those calls, longer or
+    /// shorter; a call's <see cref="CancellationToken"/> still ends it sooner.
     /// </summary>
     /// <param name="timeout">The timeout of each call; <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> for none.</param>
     /// <returns>The client.</returns>
@@ -95,7 +103,7 @@ public partial class CentClient : IAsyncDisposable, IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "a timeout is positive, or Timeout.InfiniteTimeSpan");
         }
-        return new CentClient(_core, timeout);
+        return new CentClient(_core, timeout, ownTimeout: true);
     }
 
     /// <summary>

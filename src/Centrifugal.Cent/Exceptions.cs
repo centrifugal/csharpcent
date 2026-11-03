@@ -199,8 +199,9 @@ public sealed class CentNetworkException : CentException
 }
 
 /// <summary>
-/// The call's deadline ended: the client's <c>RequestTimeout</c>, <see cref="CentClient.WithTimeout"/>,
-/// or the timeout of an <see cref="HttpClient"/> of the application's. A call cancelled by its
+/// The call's deadline ended: the client's <c>RequestTimeout</c>, the timeout of
+/// <see cref="CentClient.WithTimeout"/> replacing it, a broadcast retry's
+/// <c>AttemptTimeout</c>, or the timeout of an <see cref="HttpClient"/> of the application's. A call cancelled by its
 /// <see cref="CancellationToken"/> throws <see cref="OperationCanceledException"/> instead.
 /// </summary>
 public sealed class CentTimeoutException : CentException

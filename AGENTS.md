@@ -45,11 +45,15 @@ passes; if you find yourself about to break one, stop and say so instead.
    `CentApiException`, matched by code alone; an unknown code is still one. The
    transport error mode gives the same error as a 200 reply. A reply which is
    not a JSON object of the reply's shape is a `CentDecodeException`.
-4. **One deadline per call.** `RequestTimeout`, or `WithTimeout`'s, bounds the
-   whole call - the endpoint and token functions, the connection, the reply
-   read - through one `CancellationToken`, so a reply trickling in stops at the
-   deadline. Every timeout is a `CentTimeoutException`, an `HttpClient`'s own
-   included; a caller's cancellation is an `OperationCanceledException`.
+4. **One deadline per call.** `RequestTimeout`, or `WithTimeout`'s replacing it,
+   bounds every call - the endpoint and token functions, the connection, the
+   reply read - through one `CancellationToken`, so a reply trickling in stops
+   at the deadline. A caller's token only shortens it, never extends it. A
+   broadcast retry's `AttemptTimeout` replaces it per attempt, the token and a
+   `WithTimeout` view bounding the call as a whole; an automatic batch request
+   lasts until its calls' latest deadline, at least `RequestTimeout`. Every
+   timeout is a `CentTimeoutException`, an `HttpClient`'s own included; a
+   caller's cancellation is an `OperationCanceledException`.
 5. **A payload is carried exactly.** A reply's payloads are `JsonElement?`,
    which go back as the same JSON value, number text kept. JSON `null` is an
    element of kind `Null`; C# `null` is no payload.

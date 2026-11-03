@@ -160,10 +160,14 @@ pass it - 64-bit IDs - as strings: `new { id = id.ToString() }`, or
 ## Timeouts
 
 Every call has one deadline: `RequestTimeout` (10 seconds by default), or the
-timeout of a client from `WithTimeout`, sharing everything else with it. It
-bounds the whole call - connecting, sending, reading the reply, a reply trickling
-in included - and its end throws `CentTimeoutException`. A call's
-`CancellationToken` cancels it sooner, throwing `OperationCanceledException`.
+timeout of a client from `WithTimeout`, which replaces it for that client's
+calls, longer or shorter, sharing everything else. It bounds the whole call -
+connecting, sending, reading the reply, a reply trickling in included - and its
+end throws `CentTimeoutException`. A call's `CancellationToken` only shortens
+it, throwing `OperationCanceledException`, and never extends it: a call made
+with the token of an HTTP request which lives for minutes still gives up on a
+stuck Centrifugo at `RequestTimeout`. To let calls take longer, raise the
+timeout.
 
 ```csharp
 var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
@@ -306,6 +310,14 @@ var result = await client.BroadcastWithRetryAsync(request, new BroadcastRetryOpt
     },
 }, ct);
 ```
+
+Each attempt has its own timeout: `AttemptTimeout`, replacing `RequestTimeout`
+for it, longer or shorter, or `RequestTimeout` without one. The call's
+`CancellationToken`, and the timeout of a client from `WithTimeout`, bound the
+attempts and the waits between them together. In an automatic batch a call
+keeps the deadline it would have alone, and the batch request lasts until the
+latest of its calls' deadlines, at least `RequestTimeout` from when it is sent -
+so it may outlast one call's.
 
 A batch sends commands in one request. A method per API method adds one and
 returns its `Pending<T>`, holding its outcome once the batch is sent:

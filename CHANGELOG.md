@@ -28,6 +28,13 @@ synced again from the tag before this version is released.
 - `CentHttpException`'s message for a redirect says what redirects: Centrifugo's
   router, for a path not in canonical form.
 - The `User-Agent` is `csharpcent/0.2`.
+- `BroadcastRetryOptions.AttemptTimeout` is each attempt's own timeout,
+  replacing `RequestTimeout` for it - longer or shorter - where it was capped by
+  `RequestTimeout` before. Without it, `RequestTimeout` bounds each attempt. The
+  call as a whole is bounded by its `CancellationToken`, and by the timeout of a
+  client from `WithTimeout`, rather than by `RequestTimeout`. Every other call
+  keeps its rule, now said in the docs: `RequestTimeout`, or `WithTimeout`'s
+  replacing it, bounds every call, and a `CancellationToken` only shortens it.
 
 ### Added
 

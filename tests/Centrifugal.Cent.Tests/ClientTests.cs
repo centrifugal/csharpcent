@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.Extensions.Time.Testing;
@@ -330,6 +331,62 @@ public sealed class ClientTests
         var longer = client.WithTimeout(TimeSpan.FromMilliseconds(300));
         Assert.Equal(TimeSpan.FromMilliseconds(300), longer.Timeout);
         await Assert.ThrowsAsync<CentTimeoutException>(() => longer.PublishAsync(Publish(), Ct));
+    }
+
+    public static TheoryData<bool> AloneAndAutoBatched => new() { false, true };
+
+    private static Action<CentClientOptions> Timeouts(bool autoBatch, TimeSpan requestTimeout) => o =>
+    {
+        o.RequestTimeout = requestTimeout;
+        if (autoBatch)
+        {
+            o.AutoBatch = new AutoBatchOptions { MaxInFlight = 1 };
+        }
+    };
+
+    // RequestTimeout bounds every call: a caller's token living longer does not extend it.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task ALongerTokenEndsAtRequestTimeout(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(_ => Answer.After(TimeSpan.FromSeconds(30), Answer.Ok("{}")));
+        await using var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromMilliseconds(100)));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        var started = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<CentTimeoutException>(() => client.PublishAsync(Publish(), cts.Token));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"{started.Elapsed}");
+    }
+
+    // A caller's token ending sooner shortens the call, as a cancellation.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task AShorterTokenEndsTheCallSooner(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(_ => Answer.After(TimeSpan.FromSeconds(30), Answer.Ok("{}")));
+        await using var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromSeconds(20)));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        var started = Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.PublishAsync(Publish(), cts.Token));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"{started.Elapsed}");
+    }
+
+    // WithTimeout's timeout replaces RequestTimeout, longer or shorter.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task WithTimeoutReplacesRequestTimeoutLongerOrShorter(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(r => Answer.After(TimeSpan.FromMilliseconds(300), Answer.Ok(FakeCentrifugo.DefaultReply(r))));
+        await using (var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromMilliseconds(50))))
+        {
+            await Assert.ThrowsAsync<CentTimeoutException>(() => client.PublishAsync(Publish(), Ct));
+            await client.WithTimeout(TimeSpan.FromSeconds(10)).PublishAsync(Publish(), Ct);
+        }
+        await using (var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromSeconds(10))))
+        {
+            await Assert.ThrowsAsync<CentTimeoutException>(() => client.WithTimeout(TimeSpan.FromMilliseconds(50)).PublishAsync(Publish(), Ct));
+        }
     }
 
     [Fact]

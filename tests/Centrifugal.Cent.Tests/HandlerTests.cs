@@ -149,7 +149,7 @@ public sealed class HandlerTests
         var endpoints = new EndpointHandlers();
         var h = endpoints.ConnectionToken(context => context.Headers.TryGetValue("Cookie", out _)
             ? Task.FromResult("token")
-            : throw new EndpointUnauthorizedException());
+            : throw new EndpointForbiddenException());
         var withCookie = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["cookie"] = "s=1" };
         foreach (var method in new[] { "GET", "POST" })
         {
@@ -171,7 +171,7 @@ public sealed class HandlerTests
         var endpoints = new EndpointHandlers(new EndpointHandlerOptions { OnError = (_, e) => errors.Add(e) });
         var h = endpoints.SubscriptionToken((channel, _) => channel switch
         {
-            "secret" => throw new InvalidOperationException("wrapped", new EndpointUnauthorizedException()),
+            "secret" => throw new InvalidOperationException("wrapped", new EndpointForbiddenException()),
             "broken" => throw new InvalidOperationException("db"),
             _ => Task.FromResult($"token-{channel}"),
         });

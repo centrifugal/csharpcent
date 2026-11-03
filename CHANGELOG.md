@@ -28,6 +28,11 @@ synced again from the tag before this version is released.
 - `CentHttpException`'s message for a redirect says what redirects: Centrifugo's
   router, for a path not in canonical form.
 - The `User-Agent` is `csharpcent/0.2`.
+- `EndpointUnauthorizedException`, which an endpoint function throws to answer
+  403, is renamed `EndpointForbiddenException`: it read like the API client's
+  `CentUnauthorizedException`, Centrifugo refusing this server's credentials,
+  with the opposite meaning. Client SDKs report the 403 as their
+  `UnauthorizedError`.
 - `BroadcastRetryOptions.AttemptTimeout` is each attempt's own timeout,
   replacing `RequestTimeout` for it - longer or shorter - where it was capped by
   `RequestTimeout` before. Without it, `RequestTimeout` bounds each attempt. The

@@ -634,16 +634,18 @@ var endpoints = new EndpointHandlers();
 app.MapCentrifugo("/centrifugo/connection_token", endpoints.ConnectionToken(context =>
 {
     var user = context.Request.GetHttpContext().User.Identity?.Name
-        ?? throw new EndpointUnauthorizedException();
+        ?? throw new EndpointForbiddenException();
     return Task.FromResult(Token.Connection(key, new ConnectionClaims { User = user, Expiry = Expiry.After(TimeSpan.FromMinutes(15)) }));
 }));
 ```
 
 `EndpointHandlers` makes the endpoints the `getToken` and `getSignature`
 callbacks of client SDKs call: `ConnectionToken`, `SubscriptionToken` and
-`SharedPollSignature`. The function throws `EndpointUnauthorizedException` to
-answer 403 - the client stops asking; any other exception answers 500, and the
-client retries.
+`SharedPollSignature`. The function throws `EndpointForbiddenException` to
+answer 403 Forbidden - the client stops asking, and reports it as its
+`UnauthorizedError`; any other exception answers 500, and the client retries.
+It is not the API client's `CentUnauthorizedException`, which means Centrifugo
+refused this server's credentials.
 
 ## Shared poll signatures
 

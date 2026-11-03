@@ -182,9 +182,9 @@ revision, unless the request sets `RevisionOffset` and `RevisionEpoch`: a map
 state reset between pages fails with `ErrorCodes.UnrecoverablePosition` (112)
 rather than mixing two states - read again from the start then.
 
-The results holding a stream position - publish, history, map read state and
-map read stream - give it as a `StreamPosition`, `result.Position`, which is what
-`HistoryRequest.Since` takes. Reading what came after a publication:
+The results holding a stream position - publish, history, map publish, map
+remove, map read state and map read stream - give it as a `StreamPosition`,
+`result.Position`, which is what `HistoryRequest.Since` takes. Reading what came after a publication:
 
 ```csharp
 var published = await client.PublishAsync("news", data, ct);

@@ -40,6 +40,28 @@ public sealed partial class MapReadStreamResult
     public StreamPosition Position => new() { Offset = Offset, Epoch = Epoch };
 }
 
+public sealed partial class MapPublishResult
+{
+    /// <summary>
+    /// The map channel's stream position after the publish: with
+    /// <see cref="MapReadStreamRequest"/>'s <c>SinceOffset</c> and <c>SinceEpoch</c>, it reads
+    /// the changes after it.
+    /// </summary>
+    [JsonIgnore]
+    public StreamPosition Position => new() { Offset = Offset, Epoch = Epoch };
+}
+
+public sealed partial class MapRemoveResult
+{
+    /// <summary>
+    /// The map channel's stream position after the removal: with
+    /// <see cref="MapReadStreamRequest"/>'s <c>SinceOffset</c> and <c>SinceEpoch</c>, it reads
+    /// the changes after it.
+    /// </summary>
+    [JsonIgnore]
+    public StreamPosition Position => new() { Offset = Offset, Epoch = Epoch };
+}
+
 public sealed partial class HistoryRequest
 {
     internal HistoryRequest Copy() => (HistoryRequest)MemberwiseClone();

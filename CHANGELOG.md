@@ -46,8 +46,10 @@ synced again from the tag before this version is released.
   `MapReadStateAllAsync` reads every page after the first at the first one's
   revision, unless the request sets one, so a map state reset between pages
   fails with code 112 rather than mixing two states.
-- `Position` on `PublishResult`, `HistoryResult`, `MapReadStateResult` and
-  `MapReadStreamResult`: the `StreamPosition` which `HistoryRequest.Since` takes.
+- `Position` on every result holding a stream position - `PublishResult`,
+  `HistoryResult`, `MapPublishResult`, `MapRemoveResult`, `MapReadStateResult`
+  and `MapReadStreamResult`: the `StreamPosition` which `HistoryRequest.Since`
+  takes. It is not part of a result's JSON.
 - `ConnectionClaims.Profile`, Centrifugo PRO's compression profile.
 - `ConnectResult.Profile` in the connect proxy's result (Centrifugo PRO).
 

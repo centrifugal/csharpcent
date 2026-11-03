@@ -205,8 +205,13 @@ public sealed class PagesTests
         Check(new HistoryResult { Offset = 7, Epoch = "e" }.Position);
         Check(new MapReadStateResult { Offset = 7, Epoch = "e" }.Position);
         Check(new MapReadStreamResult { Offset = 7, Epoch = "e" }.Position);
+        Check(new MapPublishResult { Offset = 7, Epoch = "e" }.Position);
+        Check(new MapRemoveResult { Offset = 7, Epoch = "e" }.Position);
         // A result encoded as JSON gives its wire fields only.
         Assert.Equal("""{"offset":7,"epoch":"e"}""", JsonSerializer.Serialize(new PublishResult { Offset = 7, Epoch = "e" }, Wire.Info<PublishResult>()));
+        Assert.Equal("""{"offset":7,"epoch":"e"}""", JsonSerializer.Serialize(new MapPublishResult { Offset = 7, Epoch = "e" }, Wire.Info<MapPublishResult>()));
+        Assert.Equal("""{"offset":7,"epoch":"e"}""", JsonSerializer.Serialize(new MapRemoveResult { Offset = 7, Epoch = "e" }, Wire.Info<MapRemoveResult>()));
+        Assert.DoesNotContain("Position", JsonSerializer.Serialize(new MapReadStateResult { Offset = 7, Epoch = "e" }, Wire.Info<MapReadStateResult>()), StringComparison.Ordinal);
     }
 
     [Fact]

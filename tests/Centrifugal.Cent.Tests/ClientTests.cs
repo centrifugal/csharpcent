@@ -99,7 +99,7 @@ public sealed class ClientTests
         Assert.Equal("http://centrifugo.test/api/publish", r.Uri.ToString());
         Assert.Equal("key", r.Headers["X-API-Key"]);
         Assert.Equal("application/json", r.Headers["Content-Type"]);
-        Assert.Equal("csharpcent/0.1", r.Headers["User-Agent"]);
+        Assert.Equal("csharpcent/0.2", r.Headers["User-Agent"]);
         Assert.Equal("""{"channel":"news","data":{"text":"hi"}}""", r.Body);
     }
 

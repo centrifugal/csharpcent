@@ -13,7 +13,7 @@ namespace Centrifugal.Cent;
 internal sealed class ClientCore : IDisposable
 {
     /// <summary>The <c>User-Agent</c>: the SDK and its version - the minor one too before 1.0.</summary>
-    public const string UserAgent = "csharpcent/0.1";
+    public const string UserAgent = "csharpcent/0.2";
 
     private const int ErrorBodyRead = 4096;
     private const int ErrorBodyKept = 512;

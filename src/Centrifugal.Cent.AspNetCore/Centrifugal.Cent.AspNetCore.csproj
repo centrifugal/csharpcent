@@ -7,7 +7,7 @@
     <IsAotCompatible>true</IsAotCompatible>
 
     <PackageId>Centrifugal.Cent.AspNetCore</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>Centrifugal Labs</Authors>
     <Company>Centrifugal Labs</Company>
     <Copyright>Copyright (c) 2026 Centrifugal Labs LTD</Copyright>

@@ -577,7 +577,11 @@ Keys: `SigningKey.Hmac` (HS256), `Rsa` (RS256), `ECDsa` on P-256, P-384 or P-521
 explicitly. `ConnectionExpiry` and `SubscriptionExpiry` set when the connection
 or subscription expires, if not at the token's expiry. A connection token's
 `Meta` is not visible to other clients, but the user owning the token can decode
-it: never put in it what that user must not see.
+it: never put in it what that user must not see. A subscription token's `User`
+is the connection's user, and its `Client` binds it to one connection, by client
+ID - for a token made for a connection the application knows: Centrifugo refuses
+it from any other. A connection token's `Profile` sets Centrifugo PRO's
+compression profile.
 
 .NET has no Ed25519, so an Ed25519 key takes the signing function of a library
 of your choice, and the SDK depends on none - with BouncyCastle:

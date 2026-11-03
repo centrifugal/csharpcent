@@ -112,6 +112,12 @@ public sealed class ConnectionClaims
 
     /// <summary>Labels of the connection, for Centrifugo PRO's connection filters.</summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
+
+    /// <summary>
+    /// The dictionary compression profile of the connection: the <c>profile</c> claim, which
+    /// overrides the profile the client declared. Centrifugo PRO only.
+    /// </summary>
+    public string? Profile { get; init; }
 }
 
 /// <summary>The options of a server-side subscription in <see cref="ConnectionClaims.Subs"/>.</summary>
@@ -164,11 +170,22 @@ public sealed class ChannelsCapability
 /// </summary>
 public sealed class SubscriptionClaims
 {
-    /// <summary>The ID of the user the connection belongs to: the <c>sub</c> claim. Empty for an anonymous connection.</summary>
+    /// <summary>
+    /// The ID of the user the connection belongs to - the connection's user, not one of the
+    /// subscription's own: the <c>sub</c> claim. Empty for an anonymous connection.
+    /// </summary>
     public string User { get; init; } = "";
 
     /// <summary>The channel: required.</summary>
     public required string Channel { get; init; }
+
+    /// <summary>
+    /// Binds the token to one connection, by its client ID: the <c>client</c> claim.
+    /// Centrifugo refuses a subscribe or subscription refresh with it from any other
+    /// connection. For a token made for one connection whose client ID the application knows
+    /// - in a subscribe proxy, say. Empty: any connection of the user.
+    /// </summary>
+    public string? Client { get; init; }
 
     /// <summary>When the token stops being accepted: the <c>exp</c> claim.</summary>
     public required Expiry Expiry { get; init; }
@@ -285,6 +302,7 @@ public static class Token
                 }
                 w.WriteEndObject();
             }
+            String(w, "profile", claims.Profile);
         });
     }
 
@@ -309,6 +327,7 @@ public static class Token
         {
             Registered(w, claims.User, claims.Expiry, claims.IssuedAt, claims.Id, claims.Audience, claims.Issuer);
             w.WriteString("channel", claims.Channel);
+            String(w, "client", claims.Client);
             ExpireAt(w, claims.SubscriptionExpiry);
             Payload(w, "info", claims.Info);
             String(w, "b64info", claims.B64Info);

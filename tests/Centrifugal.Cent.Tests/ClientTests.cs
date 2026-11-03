@@ -165,8 +165,45 @@ public sealed class ClientTests
         });
         await client.InfoAsync(new InfoRequest(), Ct);
         endpoint = "http://b.test/api/info";
-        await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        var e = await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Contains("ApiEndpointFunc", e.Message, StringComparison.Ordinal);
+        Assert.False(Retry.IsRetryable(e));
         Assert.Equal(["http://a.test/api/info"], fake.Requests.ConvertAll(r => r.Uri.ToString()));
+    }
+
+    // A function's own exception fails the call before sending, naming the function, the
+    // exception chained and judged by Retry as it is.
+    [Theory]
+    [InlineData("ApiEndpointFunc")]
+    [InlineData("BearerTokenFunc")]
+    public async Task AFunctionsOwnExceptionFailsTheCallNamingIt(string function)
+    {
+        Exception thrown = new HttpRequestException("discovery is down");
+        var fake = new FakeCentrifugo();
+        await using var client = fake.CreateClient(o =>
+        {
+            Func<CancellationToken, ValueTask<string>> fails = _ => throw thrown;
+            if (function == "ApiEndpointFunc")
+            {
+                o.ApiEndpoint = null;
+                o.ApiEndpointFunc = fails;
+            }
+            else
+            {
+                o.ApiKey = null;
+                o.BearerTokenFunc = fails;
+            }
+        });
+        var e = await Assert.ThrowsAsync<CentFunctionException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Equal(function, e.Function);
+        Assert.Equal($"{function}: discovery is down", e.Message);
+        Assert.Same(thrown, e.InnerException);
+        Assert.True(Retry.IsRetryable(e));
+
+        thrown = new InvalidOperationException("misconfigured");
+        e = await Assert.ThrowsAsync<CentFunctionException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.False(Retry.IsRetryable(e));
+        Assert.Empty(fake.Requests);
     }
 
     [Fact]
@@ -183,7 +220,9 @@ public sealed class ClientTests
         Assert.Equal("Bearer t1", fake.Requests[0].Headers["Authorization"]);
         Assert.False(fake.Requests[0].Headers.ContainsKey("X-API-Key"));
         token = "";
-        await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        var empty = await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Contains("BearerTokenFunc", empty.Message, StringComparison.Ordinal);
+        Assert.False(Retry.IsRetryable(empty));
         token = "a\r\nb";
         await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
         Assert.Single(fake.Requests);

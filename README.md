@@ -224,7 +224,8 @@ A call returns its result only when it did everything asked, and throws a
 | `CentNetworkException` | The connection was refused, reset or not made |
 | `CentDecodeException` | The reply is not Centrifugo's - usually a wrong endpoint |
 | `CentInvalidRequestException` | Not sent: the request cannot be, as it is |
-| `CentInvalidConfigException` | The client was not created: the message names the option and the fix |
+| `CentInvalidConfigException` | The client refuses to work as configured - not created, or, before sending, an endpoint from `ApiEndpointFunc` failing `ApiEndpoint`'s rules or an empty or malformed token from `BearerTokenFunc`: the message names the option and the fix |
+| `CentFunctionException` | `ApiEndpointFunc` or `BearerTokenFunc` threw, before sending: `Function` names it, `InnerException` is what it threw, and `Retry.IsRetryable` judges that |
 | `CentClosedException` | A call after `CloseAsync` |
 | `BroadcastFailedChannelsException`, `BatchFailedCommandsException` | Some channels or commands failed, the others succeeded: below |
 

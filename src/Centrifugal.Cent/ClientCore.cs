@@ -234,7 +234,7 @@ internal sealed class ClientCore : IDisposable
         var token = linked.Token;
         try
         {
-            var endpoint = _endpoint ?? ValidateEndpoint(await _endpointFunc!(token).ConfigureAwait(false), "ApiEndpointFunc");
+            var endpoint = _endpoint ?? ValidateEndpoint(await CallFunction(_endpointFunc!, "ApiEndpointFunc", token).ConfigureAwait(false), "ApiEndpointFunc");
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + "/" + method)
             {
                 Content = new ReadOnlyMemoryContent(body) { Headers = { ContentType = Json } },
@@ -246,7 +246,7 @@ internal sealed class ClientCore : IDisposable
             }
             if (_bearerTokenFunc is not null)
             {
-                var bearer = await _bearerTokenFunc(token).ConfigureAwait(false);
+                var bearer = await CallFunction(_bearerTokenFunc, "BearerTokenFunc", token).ConfigureAwait(false);
                 if (string.IsNullOrEmpty(bearer) || HasControl(bearer))
                 {
                     throw new CentInvalidConfigException(
@@ -305,6 +305,23 @@ internal sealed class ClientCore : IDisposable
         Report(new RequestInfo(method, commands, failed, autoBatch, Time.GetElapsedTime(start), status, null));
         // A command's error in a 200 reply: the request's reply was read.
         return outcome.Error is null ? outcome.Value : throw outcome.Error;
+    }
+
+    /// <summary>
+    /// Calls an endpoint or bearer token function of the application's: an exception of its
+    /// own fails the call as a <see cref="CentFunctionException"/> naming it; the call's
+    /// deadline or cancellation ending it stays the call's.
+    /// </summary>
+    private static async ValueTask<string> CallFunction(Func<CancellationToken, ValueTask<string>> function, string name, CancellationToken token)
+    {
+        try
+        {
+            return await function(token).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            throw new CentFunctionException(name, e);
+        }
     }
 
     /// <summary>The SDK's error for an exception of the HTTP stack or of the application's functions.</summary>

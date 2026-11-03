@@ -165,7 +165,13 @@ public sealed class CentInvalidRequestException : CentException
     }
 }
 
-/// <summary>The client was not created: the message names the option and the fix.</summary>
+/// <summary>
+/// The client refuses to work as configured: it was not created, or a call got an endpoint
+/// from <see cref="CentClientOptions.ApiEndpointFunc"/> failing
+/// <see cref="CentClientOptions.ApiEndpoint"/>'s rules, or a token from
+/// <see cref="CentClientOptions.BearerTokenFunc"/> which is empty or has control
+/// characters - before sending. The message names the option and the fix. Not retryable.
+/// </summary>
 public sealed class CentInvalidConfigException : CentException
 {
     /// <summary>Creates the error - for test doubles of applications.</summary>
@@ -174,6 +180,28 @@ public sealed class CentInvalidConfigException : CentException
         : base(message)
     {
     }
+}
+
+/// <summary>
+/// An endpoint or bearer token function of the application's -
+/// <see cref="CentClientOptions.ApiEndpointFunc"/>, <see cref="CentClientOptions.BearerTokenFunc"/> -
+/// threw, failing the call before sending: <see cref="Function"/> names it, and the
+/// <see cref="Exception.InnerException"/> is what it threw. <see cref="Retry.IsRetryable"/>
+/// judges it by that exception.
+/// </summary>
+public sealed class CentFunctionException : CentException
+{
+    /// <summary>Creates the error - for test doubles of applications.</summary>
+    /// <param name="function">The option holding the function: <c>ApiEndpointFunc</c> or <c>BearerTokenFunc</c>.</param>
+    /// <param name="innerException">What the function threw.</param>
+    public CentFunctionException(string function, Exception innerException)
+        : base($"{function}: {innerException?.Message}", innerException)
+    {
+        Function = function;
+    }
+
+    /// <summary>The option holding the function: <c>ApiEndpointFunc</c> or <c>BearerTokenFunc</c>.</summary>
+    public string Function { get; }
 }
 
 /// <summary>A call after the client was closed.</summary>
@@ -288,7 +316,8 @@ public static class Retry
         BatchFailedCommandsException e => e.Failed.Any(c => IsRetryable(c.Error)),
         // Stopped by the call's deadline, not by the application: another call has time.
         CentRetryStoppedException e => e.InnerException is CentTimeoutException && IsRetryable(e.BroadcastError),
-        // The errors of an endpoint or bearer token function of the application's.
+        // An endpoint or bearer token function's own error, judged as it is.
+        CentFunctionException e => e.InnerException is { } inner && IsRetryable(inner),
         TimeoutException => true,
         HttpRequestException e => !IsCertificateError(e),
         SocketException => true,

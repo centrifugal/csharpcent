@@ -12,7 +12,9 @@ public sealed class CentClientOptions
 
     /// <summary>
     /// Returns the base URL of the API per request, for addresses discovered at run time.
-    /// Its result is validated as <see cref="ApiEndpoint"/> is, per request.
+    /// Its result is validated as <see cref="ApiEndpoint"/> is, per request: one failing the
+    /// rules fails the call with <see cref="CentInvalidConfigException"/> before sending. An
+    /// exception it throws fails the call as a <see cref="CentFunctionException"/>.
     /// </summary>
     public Func<CancellationToken, ValueTask<string>>? ApiEndpointFunc { get; set; }
 
@@ -26,7 +28,10 @@ public sealed class CentClientOptions
     /// <summary>
     /// Returns a token sent as <c>Authorization: Bearer</c>, per request: Centrifugo PRO's API
     /// tokens - see <see cref="Tokens.ApiTokenSource"/>. Not together with <see cref="ApiKey"/>:
-    /// Centrifugo PRO judges a request with a bearer token by the token alone.
+    /// Centrifugo PRO judges a request with a bearer token by the token alone. An empty
+    /// token, or one with control characters, fails the call with
+    /// <see cref="CentInvalidConfigException"/> before sending; an exception it throws fails
+    /// the call as a <see cref="CentFunctionException"/>.
     /// </summary>
     public Func<CancellationToken, ValueTask<string>>? BearerTokenFunc { get; set; }
 

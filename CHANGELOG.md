@@ -33,6 +33,14 @@ synced again from the tag before this version is released.
   `CentUnauthorizedException`, Centrifugo refusing this server's credentials,
   with the opposite meaning. Client SDKs report the 403 as their
   `UnauthorizedError`.
+- An exception thrown by `ApiEndpointFunc` or `BearerTokenFunc` now fails the
+  call as a `CentFunctionException` naming the function (`BearerTokenFunc: ...`),
+  with the exception as its `InnerException`, where it escaped as it was
+  before; `Retry.IsRetryable` judges it by that exception. An endpoint from
+  `ApiEndpointFunc` failing `ApiEndpoint`'s rules, or an empty or malformed
+  token from `BearerTokenFunc`, fails the call with
+  `CentInvalidConfigException` before sending, as before; its docs now say a
+  call can throw it, not only creating the client.
 - `BroadcastRetryOptions.AttemptTimeout` is each attempt's own timeout,
   replacing `RequestTimeout` for it - longer or shorter - where it was capped by
   `RequestTimeout` before. Without it, `RequestTimeout` bounds each attempt. The

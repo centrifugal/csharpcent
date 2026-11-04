@@ -31,7 +31,7 @@ dotnet add package Centrifugal.Cent.AspNetCore   # serving handlers with ASP.NET
 
 csharpcent implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.2, whose reference implementation is
+version 0.3, whose reference implementation is
 [gocent](https://github.com/centrifugal/gocent).
 
 ## Example
@@ -51,9 +51,14 @@ Console.WriteLine(result.Offset);
 Create one client per process and share it: it is safe for concurrent use and
 keeps its connections alive. Every API method is a method of the client taking
 its request - `PublishAsync`, `PresenceAsync`, `HistoryAsync`... - with all the
-method's fields; a request's fields the protos mark required are `required`
-members, so the compiler says when one is missing. Publish and broadcast also
-have short forms taking the channel and data:
+method's fields. A request's fields the protos mark required are `required`
+members, so the compiler says when one is missing; one set to `null`, `""` or
+`0` - which go out as the field left unset - fails before sending with
+`CentInvalidRequestException` naming it, nested ones included
+(`LimitStrategy.RateLimit.Policies[0].Rate is required`). A field whose empty
+value has a meaning is not checked: `InvalidateUserTokensRequest.User`, where
+empty means anonymous users. Publish and broadcast also have short forms taking
+the channel and data:
 
 ```csharp
 await client.PublishAsync(new PublishRequest { Channel = "news", Data = data, IdempotencyKey = key, SkipHistory = true });
@@ -76,6 +81,38 @@ builder.Services.AddCentClient(builder.Configuration.GetSection("Centrifugo"));
     "AutoBatch": { "MaxInFlight": 32 }
   }
 }
+```
+
+A string field with a fixed set of values has a constant per value, generated
+from the protos: `ProviderValues.Fcm`, `PlatformValues.IOS`, `OpValues.Add`,
+`StatusValues.Delivered`, `KeyModeValues.IfNew`, `CmpValues.Eq`,
+`FilterNodeOpValues.And`, and in the proxy `EncodingValues.Binary`,
+`ChannelEventTypeValues.Occupied`, `CapabilityMatchValues.Wildcard` and the
+rest. The fields stay strings: a value Centrifugo
+adds is sent before the SDK names it.
+
+```csharp
+await client.DeviceRegisterAsync(new DeviceRegisterRequest
+{
+    Provider = ProviderValues.Fcm,
+    Platform = PlatformValues.Android,
+    Token = fcmToken,
+    User = "42",
+});
+```
+
+`device_update`'s updates are sent whenever they are set, even empty: an empty
+`UserUpdate` detaches the devices from their user, an empty `TimezoneUpdate`,
+`LocaleUpdate` or `MetaUpdate` clears the setting, and one left `null` changes
+nothing. Any other message in a request whose fields are all empty is left out,
+as an empty field is.
+
+```csharp
+await client.DeviceUpdateAsync(new DeviceUpdateRequest
+{
+    Users = ["42"],
+    TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "" }, // clears it
+});
 ```
 
 What configuration cannot hold - a bearer token function, say - goes in a
@@ -124,14 +161,63 @@ pass it - 64-bit IDs - as strings: `new { id = id.ToString() }`, or
 ## Timeouts
 
 Every call has one deadline: `RequestTimeout` (10 seconds by default), or the
-timeout of a client from `WithTimeout`, sharing everything else with it. It
-bounds the whole call - connecting, sending, reading the reply, a reply trickling
-in included - and its end throws `CentTimeoutException`. A call's
-`CancellationToken` cancels it sooner, throwing `OperationCanceledException`.
+timeout of a client from `WithTimeout`, which replaces it for that client's
+calls, longer or shorter, sharing everything else. It bounds the whole call -
+connecting, sending, reading the reply, a reply trickling in included - and its
+end throws `CentTimeoutException`. A call's `CancellationToken` only shortens
+it, throwing `OperationCanceledException`, and never extends it: a call made
+with the token of an HTTP request which lives for minutes still gives up on a
+stuck Centrifugo at `RequestTimeout`. To let calls take longer, raise the
+timeout: it cannot be turned off. `RequestTimeout` zero is the default, and
+`Timeout.InfiniteTimeSpan`, a negative timeout or one longer than 24 days is
+refused - by `CentClient`'s constructor, `WithTimeout`, `AttemptTimeout` and
+the iterators' page timeout alike.
 
 ```csharp
 var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
 ```
+
+## Pages and stream positions
+
+`HistoryAllAsync`, `DeviceListAllAsync`, `DeviceTopicListAllAsync`,
+`UserTopicListAllAsync` and `MapReadStateAllAsync` give every item of a paged
+method as an `IAsyncEnumerable`, reading a page when the iteration reaches it:
+leaving the loop reads no further page, and a failed call ends it with its
+exception. The request's `Limit` is the page size. Each page's request is
+bounded by `RequestTimeout`, or by a page timeout of its own -
+`client.DeviceListAllAsync(request, pageTimeout: TimeSpan.FromSeconds(30), ct)` -
+replacing it, longer or shorter. Nothing bounds the iteration as a whole but
+the caller's `CancellationToken`: it lasts as long as the loop, and the timeout
+of a client from `WithTimeout` does not apply to its pages. Items changing while
+iterating - a device registered, an entry updated - may or may not be seen.
+`MapReadStateAllAsync` reads every page after the first at the first one's
+revision, unless the request sets `RevisionOffset` and `RevisionEpoch`: a map
+state reset between pages fails with `ErrorCodes.UnrecoverablePosition` (112)
+rather than mixing two states - read again from the start then.
+
+The results holding a stream position - publish, history, map publish, map
+remove, map read state and map read stream - give it as a `StreamPosition`,
+`result.Position`, which is what `HistoryRequest.Since` takes. So do the items
+of the history and map state iterators: `HistoryAllAsync` yields a
+`HistoryItem`, the `Publication` with its `Position` - where to resume, or a
+subscription's `RecoverSince` - and `MapReadStateAllAsync` a `MapStateItem`, the
+`Entry` with `State`, the position the state was read at, which
+`MapReadStreamAsync` follows it from. Reading what came after a publication:
+
+```csharp
+var published = await client.PublishAsync("news", data, ct);
+// ...
+await foreach (var item in client.HistoryAllAsync(new HistoryRequest { Channel = "news", Limit = 100, Since = published.Position }, ct))
+{
+    Handle(item.Publication.Data);
+    last = item.Position; // to resume from later
+}
+```
+
+`HistoryAllAsync` reads oldest first, so it refuses `Reverse`, and a `Limit`
+below 1, before sending anything. A position whose epoch is no longer the
+stream's fails with `ErrorCodes.UnrecoverablePosition` (112): the stream was
+reset - Redis restarted, say - and reading from its start is the only way on.
 
 ## Errors
 
@@ -146,7 +232,8 @@ A call returns its result only when it did everything asked, and throws a
 | `CentNetworkException` | The connection was refused, reset or not made |
 | `CentDecodeException` | The reply is not Centrifugo's - usually a wrong endpoint |
 | `CentInvalidRequestException` | Not sent: the request cannot be, as it is |
-| `CentInvalidConfigException` | The client was not created: the message names the option and the fix |
+| `CentInvalidConfigException` | The client refuses to work as configured - not created, or, before sending, an endpoint from `ApiEndpointFunc` failing `ApiEndpoint`'s rules or an empty or malformed token from `BearerTokenFunc`: the message names the option and the fix |
+| `CentFunctionException` | `ApiEndpointFunc` or `BearerTokenFunc` threw, before sending: `Function` names it, `InnerException` is what it threw, and `Retry.IsRetryable` judges that |
 | `CentClosedException` | A call after `CloseAsync` |
 | `BroadcastFailedChannelsException`, `BatchFailedCommandsException` | Some channels or commands failed, the others succeeded: below |
 
@@ -163,7 +250,8 @@ catch (CentApiException e) when (e.Code == ErrorCodes.UnknownChannel)
 
 Error messages carry hints: a 404 says whether the endpoint is wrong or the
 server is Centrifugo OSS answering a PRO method; a redirect says to check http
-or https. With `http_api.error_mode: transport`, Centrifugo's errors are the same
+or https and the endpoint's path - Centrifugo's API never redirects a call, but
+its router redirects a path not in canonical form, with a doubled slash say. With `http_api.error_mode: transport`, Centrifugo's errors are the same
 `CentApiException`s.
 
 ## Retries
@@ -199,7 +287,7 @@ Idempotency keys:
   publication under the same key is not published, so a key derived from an
   entity must also name the event - `order-42-paid`, not `order-42`;
 - the memory, Redis and PostgreSQL brokers keep keys; the NATS broker ignores
-  them, and a retry publishes again.
+  them, so a retry publishes again.
 
 ## Broadcast and batch
 
@@ -238,6 +326,14 @@ var result = await client.BroadcastWithRetryAsync(request, new BroadcastRetryOpt
     },
 }, ct);
 ```
+
+Each attempt has its own timeout: `AttemptTimeout`, replacing `RequestTimeout`
+for it, longer or shorter, or `RequestTimeout` without one. The call's
+`CancellationToken`, and the timeout of a client from `WithTimeout`, bound the
+attempts and the waits between them together. In an automatic batch a call
+keeps the deadline it would have alone, and the batch request lasts until the
+latest of its calls' deadlines, at least `RequestTimeout` from when it is sent -
+so it may outlast one call's.
 
 A batch sends commands in one request. A method per API method adds one and
 returns its `Pending<T>`, holding its outcome once the batch is sent:
@@ -477,7 +573,11 @@ connection - a code in [4000, 4999], those in [4500, 4999] telling the client
 not to reconnect, and a reason of at most 32 bytes. Refresh and sub refresh
 answer only with a result, ending through its `Expired`. Any other exception
 fails the request with HTTP status 500, logged - and reported to
-`ProxyHandlerOptions.OnError`, when set. Payloads arrive
+`ProxyHandlerOptions.OnError`, when set - and so does a function returning
+`null`: Centrifugo would take a response with none of result, error and
+disconnect as accepting a subscribe, publish, rpc, map publish or map remove as
+sent, as refusing a connect unless anonymous connections are allowed, and as a
+refresh or sub refresh which expired. Payloads arrive
 as `JsonElement?` - in the `B64` fields in binary mode - and go back as they are.
 
 The proxy's types live in `Centrifugal.Cent.Proxy`: some share names with the
@@ -508,7 +608,11 @@ Keys: `SigningKey.Hmac` (HS256), `Rsa` (RS256), `ECDsa` on P-256, P-384 or P-521
 explicitly. `ConnectionExpiry` and `SubscriptionExpiry` set when the connection
 or subscription expires, if not at the token's expiry. A connection token's
 `Meta` is not visible to other clients, but the user owning the token can decode
-it: never put in it what that user must not see.
+it: never put in it what that user must not see. A subscription token's `User`
+is the connection's user, and its `Client` binds it to one connection, by client
+ID - for a token made for a connection the application knows: Centrifugo refuses
+it from any other. A connection token's `Profile` sets Centrifugo PRO's
+compression profile.
 
 .NET has no Ed25519, so an Ed25519 key takes the signing function of a library
 of your choice, and the SDK depends on none - with BouncyCastle:
@@ -539,16 +643,18 @@ var endpoints = new EndpointHandlers();
 app.MapCentrifugo("/centrifugo/connection_token", endpoints.ConnectionToken(context =>
 {
     var user = context.Request.GetHttpContext().User.Identity?.Name
-        ?? throw new EndpointUnauthorizedException();
+        ?? throw new EndpointForbiddenException();
     return Task.FromResult(Token.Connection(key, new ConnectionClaims { User = user, Expiry = Expiry.After(TimeSpan.FromMinutes(15)) }));
 }));
 ```
 
 `EndpointHandlers` makes the endpoints the `getToken` and `getSignature`
 callbacks of client SDKs call: `ConnectionToken`, `SubscriptionToken` and
-`SharedPollSignature`. The function throws `EndpointUnauthorizedException` to
-answer 403 - the client stops asking; any other exception answers 500, and the
-client retries.
+`SharedPollSignature`. The function throws `EndpointForbiddenException` to
+answer 403 Forbidden - the client stops asking, and reports it as its
+`UnauthorizedError`; any other exception answers 500, and the client retries.
+It is not the API client's `CentUnauthorizedException`, which means Centrifugo
+refused this server's credentials.
 
 ## Shared poll signatures
 

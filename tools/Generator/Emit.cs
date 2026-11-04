@@ -70,10 +70,30 @@ internal static partial class Names
     private static partial Regex RequiredMark();
 
     /// <summary>
-    /// A field the proto marks plainly "Required." - not "Required unless ..." - is a
-    /// <c>required</c> member (spec 3.3).
+    /// A field the proto marks plainly "Required." - not "Required unless ..." or "Required
+    /// when ..." - is a <c>required</c> member (spec 3.3).
     /// </summary>
     public static bool IsRequired(Field f) => RequiredMark().IsMatch(string.Join(' ', f.Doc));
+
+    /// <summary>
+    /// A required field whose comment gives its empty value a meaning after "Required." -
+    /// <c>"" clears it</c>, <c>An empty map clears it.</c> It stays a <c>required</c> member,
+    /// but is not checked before sending: empty is a value of it (spec 3.3).
+    /// </summary>
+    public static bool EmptyHasMeaning(Field f)
+    {
+        var doc = string.Join(' ', f.Doc);
+        var at = RequiredMark().Match(doc);
+        if (!at.Success)
+        {
+            return false;
+        }
+        var after = doc[(at.Index + at.Length)..];
+        return after.Contains("\"\"", StringComparison.Ordinal) || after.Contains("empty", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>A required field the client checks before sending (spec 3.5).</summary>
+    public static bool IsChecked(Field f) => IsRequired(f) && !EmptyHasMeaning(f);
 }
 
 /// <summary>Code with indentation.</summary>
@@ -138,6 +158,15 @@ internal static class Types
         s.Find(type) is { } m && m.Name.EndsWith("Value", StringComparison.Ordinal) && m.Fields is [{ Name: "value" } f]
             ? f.Type
             : null;
+
+    /// <summary>
+    /// A presence wrapper (spec 2): a message with one field which Centrifugo reads by whether
+    /// it is there - a <c>*Value</c> message whose field is <c>value</c>, or one whose only
+    /// field's comment gives its empty value a meaning, as <c>device_update</c>'s updates. It
+    /// is sent whenever it is set, even empty; null leaves it out.
+    /// </summary>
+    public static bool IsPresenceWrapper(Schema s, string type) =>
+        s.Find(type) is { } m && (WrapperScalar(s, type) is not null || m.Fields is [var f] && Names.EmptyHasMeaning(f));
 
     public static string Scalar(string type) => type switch
     {
@@ -269,13 +298,17 @@ internal static class Types
 
     public static List<string> MessageDoc(Message m, string fallback) => m.Doc.Count == 0 ? [fallback] : m.Doc;
 
-    /// <summary>Writes a message as a sealed class: settable when it is sent, init-only when received.</summary>
-    public static void Emit(CodeWriter w, Schema s, Message m, bool input, string fallback, SortedSet<string>? required, string? rename = null)
+    /// <summary>
+    /// Writes a message as a sealed class: settable when it is sent, init-only when received.
+    /// One which is sent says when it is zero - left out of the message holding it - and
+    /// which required field it leaves unset.
+    /// </summary>
+    public static void Emit(CodeWriter w, Schema s, Message m, bool input, string fallback, SortedSet<string>? required, Checks? checks = null)
     {
-        var name = rename ?? m.Name;
+        var name = m.Name;
         w.Line();
         w.Summary(MessageDoc(m, fallback));
-        w.Line($"public sealed partial class {name}");
+        w.Line(input ? $"public sealed partial class {name} : IWireMessage" : $"public sealed partial class {name}");
         w.Line("{");
         var first = true;
         foreach (var f in m.Fields)
@@ -304,7 +337,132 @@ internal static class Types
             var init = cs.Initializer is null ? "" : $" = {cs.Initializer};";
             w.Line($"public {(cs.Required ? "required " : "")}{cs.Type} {cs.Property} {accessor}{init}");
         }
+        if (input)
+        {
+            EmitWire(w, s, m, checks ?? new Checks(s));
+        }
         w.Line("}");
+    }
+
+    /// <summary>The C# condition true when a field of a message which is sent is at its zero value.</summary>
+    private static string ZeroCheck(Schema s, Field f)
+    {
+        var p = Names.Pascal(f.Name);
+        if (f.Repeated || f.MapKey is not null)
+        {
+            return $"{p} is not {{ Count: > 0 }}";
+        }
+        if (f.Type == "string")
+        {
+            return $"string.IsNullOrEmpty({p})";
+        }
+        if (f.Type == "bool")
+        {
+            return $"!{p}";
+        }
+        if (f.Type == "bytes" || WrapperScalar(s, f.Type) is not null)
+        {
+            return $"{p} is null";
+        }
+        if (Proto.Scalars.Contains(f.Type))
+        {
+            return $"{p} == 0";
+        }
+        return $"WireMessage.IsZero({p})";
+    }
+
+    /// <summary>Writes <c>IWireMessage</c>'s members: when the message is zero, and the path of a required field it leaves unset.</summary>
+    private static void EmitWire(CodeWriter w, Schema s, Message m, Checks checks)
+    {
+        w.Line();
+        if (IsPresenceWrapper(s, m.Name))
+        {
+            w.Line("// A presence wrapper: sent whenever it is set, even empty (spec 2).");
+            w.Line("bool IWireMessage.IsZero => false;");
+        }
+        else if (m.Fields.Count == 0)
+        {
+            w.Line("bool IWireMessage.IsZero => true;");
+        }
+        else
+        {
+            var conds = m.Fields.Select(f => ZeroCheck(s, f)).ToList();
+            w.Line("bool IWireMessage.IsZero =>");
+            for (var i = 0; i < conds.Count; i++)
+            {
+                w.Line($"    {conds[i]}{(i == conds.Count - 1 ? ";" : " &&")}");
+            }
+        }
+        w.Line();
+        if (!checks.Needs(m.Name))
+        {
+            w.Line("string? IWireMessage.Missing() => null;");
+            return;
+        }
+        w.Line("string? IWireMessage.Missing()");
+        w.Line("{");
+        foreach (var f in m.Fields)
+        {
+            var p = Names.Pascal(f.Name);
+            if (Names.IsChecked(f))
+            {
+                if (f.Type == "bool" && !f.Repeated && f.MapKey is null)
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: a bool cannot be required: false and unset are one value");
+                }
+                w.Line($"if ({ZeroCheck(s, f)})");
+                w.Line("{");
+                w.Line($"return \"{p}\";");
+                w.Line("}");
+            }
+            if (s.Find(f.Type) is null || IsPresenceWrapper(s, f.Type) || !checks.Needs(f.Type))
+            {
+                continue;
+            }
+            if (f.MapKey is not null)
+            {
+                throw new GeneratorException($"{m.Name}.{f.Name}: a map of messages with required fields is not supported");
+            }
+            if (f.Repeated)
+            {
+                w.Line($"if (WireMessage.MissingIn({p}) is {{ }} {Local(f)})");
+                w.Line("{");
+                w.Line($"return \"{p}\" + {Local(f)};");
+                w.Line("}");
+                continue;
+            }
+            w.Line($"if (WireMessage.Missing({p}) is {{ }} {Local(f)})");
+            w.Line("{");
+            w.Line($"return \"{p}.\" + {Local(f)};");
+            w.Line("}");
+        }
+        w.Line("return null;");
+        w.Line("}");
+    }
+
+    private static string Local(Field f) => "missing" + Names.Pascal(f.Name);
+}
+
+/// <summary>
+/// The messages whose required fields the client checks before sending (spec 3.5): those
+/// with required fields of their own, or holding such a message - directly or in a list.
+/// </summary>
+internal sealed class Checks(Schema s)
+{
+    private readonly Dictionary<string, bool> _need = [];
+
+    public bool Needs(string name)
+    {
+        if (_need.TryGetValue(name, out var v))
+        {
+            return v;
+        }
+        _need[name] = false; // a message holding itself checks nothing more
+        var m = s.Find(name)!;
+        v = m.Fields.Any(f => Names.IsChecked(f)
+            || s.Find(f.Type) is not null && !Types.IsPresenceWrapper(s, f.Type) && Needs(f.Type));
+        _need[name] = v;
+        return v;
     }
 }
 
@@ -317,6 +475,9 @@ internal static class ApiEmitter
     /// </summary>
     private static readonly string[] OmittedCommands = ["rpc"];
 
+    /// <summary>The messages of a batch, naming a command's request and reply types.</summary>
+    private static readonly string[] Envelopes = ["Command", "Reply"];
+
     /// <summary>Requests with rules the client checks before sending (spec 3.5): <c>Validation.{Name}</c>.</summary>
     private static readonly string[] Validated = ["publish", "broadcast"];
 
@@ -325,13 +486,6 @@ internal static class ApiEmitter
     /// of them.
     /// </summary>
     private static readonly string[] Handwritten = ["Error", "BroadcastResult", "Command", "Reply", "BatchRequest", "BatchResponse"];
-
-    /// <summary>Fields a request of the tests sets besides its required ones.</summary>
-    private static readonly Dictionary<string, string> TestExtras = new()
-    {
-        ["publish"] = "Data = RawJson.Parse(\"{}\")",
-        ["broadcast"] = "Data = RawJson.Parse(\"{}\")",
-    };
 
     public static List<ApiCommand> Commands(Schema s)
     {
@@ -376,21 +530,23 @@ internal static class ApiEmitter
 
     private static void Prepare(Schema s) => Names.RenameTypes(s, Names.Type);
 
-    public static string Types(Schema s, SortedSet<string> required)
+    /// <summary>Whether a message of api.proto is a generated type: not one written by hand, an envelope, an omitted command's or a wrapper.</summary>
+    private static bool Emitted(Schema s, string name)
+    {
+        if (Handwritten.Contains(name) || s.Methods.Any(m => m.Response == name) || Cent.Generator.Types.WrapperScalar(s, name) is not null)
+        {
+            return false;
+        }
+        return !Envelopes.Any(c => s.Find(c)!.Fields.Any(f => OmittedCommands.Contains(f.Name) && f.Type == name));
+    }
+
+    public static string Types(Schema s, SortedSet<string> required, Pins pins)
     {
         Prepare(s);
         var cmds = Commands(s);
-        var envelopes = s.Methods.Select(m => m.Response).ToHashSet();
-        var omitted = new HashSet<string>();
-        foreach (var name in new[] { "Command", "Reply" })
-        {
-            foreach (var f in s.Find(name)!.Fields.Where(f => OmittedCommands.Contains(f.Name)))
-            {
-                omitted.Add(f.Type);
-            }
-        }
         var inputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Request));
         var outputs = Cent.Generator.Types.Closure(s, cmds.Select(c => c.Result));
+        var checks = new Checks(s);
         var w = new CodeWriter();
         w.Line(Cent.Generator.Types.Header("proto/api.proto"));
         w.Line();
@@ -404,7 +560,7 @@ internal static class ApiEmitter
         w.Line("namespace Centrifugal.Cent;");
         foreach (var m in s.Messages)
         {
-            if (Handwritten.Contains(m.Name) || envelopes.Contains(m.Name) || omitted.Contains(m.Name) || Cent.Generator.Types.WrapperScalar(s, m.Name) is not null)
+            if (!Emitted(s, m.Name))
             {
                 continue;
             }
@@ -413,7 +569,15 @@ internal static class ApiEmitter
             {
                 throw new GeneratorException($"api.proto: {m.Name} is both sent and received and has a payload: decide its type");
             }
-            Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo server API.", required);
+            Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo server API.", required, checks);
+        }
+        try
+        {
+            Consts.Emit(w, s, n => Emitted(s, n), pins);
+        }
+        catch (GeneratorException e)
+        {
+            throw new GeneratorException("api.proto: " + e.Message);
         }
         return w.ToString();
     }
@@ -531,23 +695,30 @@ internal static class ApiEmitter
 
     private static string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
-    /// <summary>A request with its required fields set, for the tests.</summary>
-    private static string Dummy(Schema s, string type, string? method = null)
+    /// <summary>
+    /// A request with every field set, for the tests: so that the required-field checks let
+    /// it through, nested ones included (spec 15). A message holding itself is not filled
+    /// below its first level.
+    /// </summary>
+    private static string Dummy(Schema s, string type, HashSet<string>? filling = null)
     {
+        filling ??= [];
+        filling.Add(type);
         var m = s.Find(type)!;
         var parts = new List<string>();
-        foreach (var f in m.Fields.Where(Names.IsRequired))
+        foreach (var f in m.Fields)
         {
-            parts.Add($"{Names.Pascal(f.Name)} = {DummyValue(s, f)}");
+            if (filling.Contains(f.Type))
+            {
+                continue;
+            }
+            parts.Add($"{Names.Pascal(f.Name)} = {DummyValue(s, f, filling)}");
         }
-        if (method is not null && TestExtras.TryGetValue(method, out var extra))
-        {
-            parts.Add(extra);
-        }
+        filling.Remove(type);
         return parts.Count == 0 ? $"new {type}()" : $"new {type} {{ {string.Join(", ", parts)} }}";
     }
 
-    private static string DummyValue(Schema s, Field f)
+    private static string DummyValue(Schema s, Field f, HashSet<string> filling)
     {
         string One(string type) => type switch
         {
@@ -555,7 +726,8 @@ internal static class ApiEmitter
             "bool" => "true",
             "bytes" => "RawJson.Parse(\"{}\")",
             "int32" or "int64" or "uint32" or "uint64" or "double" or "float" => "1",
-            _ => Dummy(s, type),
+            _ when Cent.Generator.Types.WrapperScalar(s, type) is { } inner => One(inner),
+            _ => Dummy(s, type, filling),
         };
         if (f.MapKey is not null)
         {
@@ -597,7 +769,7 @@ internal static class ApiEmitter
         w.Line("var ct = TestContext.Current.CancellationToken;");
         foreach (var c in cmds)
         {
-            w.Line($"await client.{c.Name}Async({Dummy(s, c.Request, c.Method)}, ct);");
+            w.Line($"await client.{c.Name}Async({Dummy(s, c.Request)}, ct);");
         }
         w.Line("Assert.Equal(Methods, fake.Paths.ConvertAll(p => p[\"/api/\".Length..]));");
         w.Line("}");
@@ -612,7 +784,7 @@ internal static class ApiEmitter
         w.Line("{");
         foreach (var c in cmds)
         {
-            w.Line($"batch.{c.Name}({Dummy(s, c.Request, c.Method)}),");
+            w.Line($"batch.{c.Name}({Dummy(s, c.Request)}),");
         }
         w.Line("};");
         w.Line("await batch.SendAsync(TestContext.Current.CancellationToken);");
@@ -628,7 +800,7 @@ internal static class ApiEmitter
         w.Line("{");
         foreach (var c in cmds)
         {
-            w.Line($"Command.{c.Name}({Dummy(s, c.Request, c.Method)}),");
+            w.Line($"Command.{c.Name}({Dummy(s, c.Request)}),");
         }
         w.Line("};");
         w.Line("Assert.Equal(Methods, commands.ConvertAll(c => c.Method));");
@@ -660,7 +832,7 @@ internal static class ProxyEmitter
     /// <summary>Proxy messages renamed in C#: <c>Error</c> would read as any error.</summary>
     private static readonly Dictionary<string, string> Renamed = new() { ["Error"] = "ProxyError" };
 
-    public static string Generate(Schema s)
+    public static string Generate(Schema s, Pins pins)
     {
         var methods = s.Methods.Where(m => !m.Streaming).ToList();
         foreach (var m in methods)
@@ -718,6 +890,17 @@ internal static class ProxyEmitter
             Cent.Generator.Types.Emit(w, s, m, input, $"The {m.Name} message of the Centrifugo proxy.", null);
         }
 
+        // The values of the string fields with a fixed set: what a handler compares a
+        // request's fields with, or sets in a result.
+        try
+        {
+            Consts.Emit(w, s, n => used.Contains(n) && !responses.Contains(n) && Cent.Generator.Types.WrapperScalar(s, n) is null, pins);
+        }
+        catch (GeneratorException e)
+        {
+            throw new GeneratorException("proxy.proto: " + e.Message);
+        }
+
         w.Line();
         foreach (var m in methods)
         {
@@ -762,6 +945,230 @@ internal static class ProxyEmitter
 
     private static string Snake(string pascal) =>
         pascal == "RPC" ? "rpc" : Regex.Replace(pascal, "(?<=[a-z])([A-Z])", "_$1").ToLowerInvariant();
+}
+
+/// <summary>
+/// The constants of the fields one pinned name covers: the values they list, and the
+/// messages holding them.
+/// </summary>
+internal sealed class ConstGroup(string name, string field, List<string> values)
+{
+    /// <summary>The pinned name, such as <c>Op</c>.</summary>
+    public string Name { get; } = name;
+
+    /// <summary>A field's proto name, for the doc comment.</summary>
+    public string Field { get; } = field;
+
+    public List<string> Values { get; } = values;
+    public List<string> Messages { get; } = [];
+
+    /// <summary>The static class holding the constants: <c>OpValues</c>, <c>FilterNodeOpValues</c>.</summary>
+    public string ClassName => Name + "Values";
+}
+
+/// <summary>
+/// The constant names spec 3.3 pins: by <c>Message.field</c>, or by <c>*.field</c> for the
+/// field in every message which has it - <c>tools/Generator/constants_api.txt</c> and
+/// <c>constants_proxy.txt</c>.
+/// </summary>
+internal sealed class Pins
+{
+    private readonly Dictionary<string, string> _names = [];
+    private readonly HashSet<string> _used = [];
+    private readonly List<string> _order = [];
+
+    public Pins(string file, string text)
+    {
+        File = file;
+        foreach (var raw in text.Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+            {
+                continue;
+            }
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2)
+            {
+                throw new GeneratorException($"{file}: \"{line}\" is not a selector and a name");
+            }
+            if (!_names.TryAdd(parts[0], parts[1]))
+            {
+                throw new GeneratorException($"{file}: {parts[0]} pinned twice");
+            }
+            _order.Add(parts[0]);
+        }
+    }
+
+    public string File { get; }
+
+    /// <summary>The pinned name of a message's field, or null.</summary>
+    public string? Name(string message, string field)
+    {
+        foreach (var selector in new[] { message + "." + field, "*." + field })
+        {
+            if (_names.TryGetValue(selector, out var name))
+            {
+                _used.Add(selector);
+                return name;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The selectors no field used.</summary>
+    public IEnumerable<string> Unused => _order.Where(s => !_used.Contains(s));
+}
+
+/// <summary>
+/// Constants for the string fields whose comments list their values, in the sentence
+/// <c>One of: add, remove, set.</c>, named as spec 3.3 pins them.
+/// </summary>
+internal static partial class Consts
+{
+    [GeneratedRegex("^[a-z][a-z0-9_]*$")]
+    private static partial Regex ValuePattern();
+
+    /// <summary>How a value is spelled where Pascal case alone reads wrong, as .NET's own names do.</summary>
+    private static readonly Dictionary<string, string> Spellings = new()
+    {
+        ["ios"] = "IOS",
+        ["webpush"] = "WebPush",
+    };
+
+    /// <summary>
+    /// The values a field's comment lists after "One of:", up to the period, or null without
+    /// the sentence. A malformed one fails the generation rather than being skipped.
+    /// </summary>
+    public static List<string>? ListedValues(List<string> doc)
+    {
+        var text = string.Join(' ', doc);
+        var at = text.IndexOf("One of:", StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return null;
+        }
+        var after = text[(at + "One of:".Length)..];
+        var end = after.IndexOf('.', StringComparison.Ordinal);
+        if (end < 0)
+        {
+            throw new GeneratorException("the values after \"One of:\" must end with a period");
+        }
+        var values = new List<string>();
+        foreach (var raw in after[..end].Split(','))
+        {
+            var v = raw.Trim();
+            if (!ValuePattern().IsMatch(v))
+            {
+                throw new GeneratorException($"\"{v}\" is not a value: lowercase letters, digits and underscores");
+            }
+            if (values.Contains(v))
+            {
+                throw new GeneratorException($"value \"{v}\" listed twice");
+            }
+            values.Add(v);
+        }
+        return values;
+    }
+
+    /// <summary>A value's constant: <c>if_new</c> is <c>IfNew</c>, <c>ios</c> is <c>IOS</c>.</summary>
+    public static string ValueName(string value) => Spellings.GetValueOrDefault(value) ?? Names.Pascal(value);
+
+    /// <summary>
+    /// The fields with listed values of the messages <paramref name="include"/> accepts, in
+    /// groups by their pinned names, in the order of the proto. A field without a pinned
+    /// name, a pin no field uses, and one name over different values all fail the
+    /// generation: a person then names the field in spec 3.3's table and the list.
+    /// </summary>
+    public static List<ConstGroup> Groups(Schema s, Func<string, bool> include, Pins pins)
+    {
+        var byName = new Dictionary<string, ConstGroup>();
+        var result = new List<ConstGroup>();
+        foreach (var m in s.Messages.Where(m => include(m.Name)))
+        {
+            foreach (var f in m.Fields)
+            {
+                List<string>? values;
+                try
+                {
+                    values = ListedValues(f.Doc);
+                }
+                catch (GeneratorException e)
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: {e.Message}");
+                }
+                if (values is null)
+                {
+                    continue;
+                }
+                if (f.Type != "string")
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name}: values are listed for strings only");
+                }
+                var name = pins.Name(m.Name, f.Name)
+                    ?? throw new GeneratorException($"{m.Name}.{f.Name} lists its values but has no pinned name: name it in {pins.File} and in spec.md section 3.3's table");
+                if (!byName.TryGetValue(name, out var g))
+                {
+                    byName[name] = g = new ConstGroup(name, f.Name, values);
+                    result.Add(g);
+                }
+                else if (!g.Values.SequenceEqual(values))
+                {
+                    throw new GeneratorException($"{m.Name}.{f.Name} lists {string.Join(", ", values)}, but {name} names {string.Join(", ", g.Values)} in {string.Join(", ", g.Messages)}");
+                }
+                g.Messages.Add(m.Name);
+            }
+        }
+        if (pins.Unused.FirstOrDefault() is { } unused)
+        {
+            throw new GeneratorException($"{pins.File}: {unused} names no field with listed values: remove it, and from spec.md section 3.3's table");
+        }
+        return result;
+    }
+
+    /// <summary>Writes a static class of constants per group.</summary>
+    public static void Emit(CodeWriter w, Schema s, Func<string, bool> include, Pins pins)
+    {
+        foreach (var g in Groups(s, include, pins))
+        {
+            var where = g.Messages.Count == 1 ? g.Messages[0] : string.Join(", ", g.Messages[..^1]) + " and " + g.Messages[^1];
+            w.Line();
+            w.Summary(
+                Wrap($"The values of the {g.Field} field of {where}. The field is a string: a value Centrifugo sends or accepts which these do not name is still a valid one."));
+            w.Line($"public static class {g.ClassName}");
+            w.Line("{");
+            for (var i = 0; i < g.Values.Count; i++)
+            {
+                if (i > 0)
+                {
+                    w.Line();
+                }
+                w.Line($"/// <summary><c>{g.Values[i]}</c>.</summary>");
+                w.Line($"public const string {ValueName(g.Values[i])} = \"{g.Values[i]}\";");
+            }
+            w.Line("}");
+        }
+    }
+
+    private static List<string> Wrap(string text)
+    {
+        var lines = new List<string>();
+        var line = "";
+        foreach (var word in text.Split(' '))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > 88)
+            {
+                lines.Add(line);
+                line = word;
+            }
+            else
+            {
+                line = line.Length == 0 ? word : line + " " + word;
+            }
+        }
+        lines.Add(line);
+        return lines;
+    }
 }
 
 /// <summary>

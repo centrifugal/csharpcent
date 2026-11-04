@@ -15,11 +15,13 @@ namespace Centrifugal.Cent;
 /// whether another attempt may succeed.
 /// </para>
 /// <para>
-/// A call ends at its deadline: <see cref="CentClientOptions.RequestTimeout"/>, or the
-/// timeout of <see cref="WithTimeout"/> - connecting, sending and reading the reply
-/// included - and throws <see cref="CentTimeoutException"/> then. Its
-/// <see cref="CancellationToken"/> cancels it sooner, throwing
-/// <see cref="OperationCanceledException"/>.
+/// Every call ends at its deadline: <see cref="CentClientOptions.RequestTimeout"/>, or the
+/// timeout of <see cref="WithTimeout"/>, which replaces it - connecting, sending and
+/// reading the reply included - and throws <see cref="CentTimeoutException"/> then. Its
+/// <see cref="CancellationToken"/> only shortens it, never extends it: a call made with the
+/// token of a request which lives for minutes still gives up on a stuck Centrifugo at its
+/// timeout, throwing <see cref="OperationCanceledException"/> when the token is cancelled
+/// first.
 /// </para>
 /// </remarks>
 /// <example>
@@ -41,6 +43,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
 {
     private readonly ClientCore _core;
     private readonly TimeSpan _timeout;
+
+    // Whether the timeout is a view's own, from WithTimeout, rather than RequestTimeout.
+    private readonly bool _ownTimeout;
 
     /// <summary>Creates a client.</summary>
     /// <param name="options">The configuration, validated now.</param>
@@ -69,21 +74,25 @@ public partial class CentClient : IAsyncDisposable, IDisposable
         _core = null!;
     }
 
-    private CentClient(ClientCore core, TimeSpan timeout)
+    private CentClient(ClientCore core, TimeSpan timeout, bool ownTimeout)
     {
         _core = core;
         _timeout = timeout;
+        _ownTimeout = ownTimeout;
     }
 
-    /// <summary>The timeout of this client's calls.</summary>
+    /// <summary>The timeout of this client's calls: <see cref="CentClientOptions.RequestTimeout"/>, or <see cref="WithTimeout"/>'s.</summary>
     public virtual TimeSpan Timeout => _timeout;
 
     /// <summary>
     /// Returns a client whose calls have another timeout, sharing everything else with this
-    /// one: its connections, automatic batching, and <see cref="CloseAsync"/>.
+    /// one: its connections, automatic batching, and <see cref="CloseAsync"/>. The timeout
+    /// replaces <see cref="CentClientOptions.RequestTimeout"/> for those calls, longer or
+    /// shorter; a call's <see cref="CancellationToken"/> still ends it sooner.
     /// </summary>
-    /// <param name="timeout">The timeout of each call; <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> for none.</param>
+    /// <param name="timeout">The timeout of each call: positive, at most 24 days. A call cannot be left unbounded.</param>
     /// <returns>The client.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">The timeout is zero, negative, infinite or longer than 24 days.</exception>
     /// <example>
     /// <code>
     /// var history = await client.WithTimeout(TimeSpan.FromSeconds(30)).HistoryAsync(request, ct);
@@ -91,11 +100,11 @@ public partial class CentClient : IAsyncDisposable, IDisposable
     /// </example>
     public virtual CentClient WithTimeout(TimeSpan timeout)
     {
-        if (timeout <= TimeSpan.Zero && timeout != System.Threading.Timeout.InfiniteTimeSpan)
+        if (!Deadline.IsValid(timeout))
         {
-            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "a timeout is positive, or Timeout.InfiniteTimeSpan");
+            throw new ArgumentOutOfRangeException(nameof(timeout), timeout, "a timeout is positive and at most 24 days: a call cannot be left unbounded");
         }
-        return new CentClient(_core, timeout);
+        return new CentClient(_core, timeout, ownTimeout: true);
     }
 
     /// <summary>
@@ -183,7 +192,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
 
     internal async Task<TResult> CallAsync<TRequest, TResult>(ApiMethod<TRequest, TResult> method, TRequest request, CancellationToken cancellationToken)
     {
-        var element = await _core.CallAsync(method.Name, method.ProOnly, () => method.Encode(request), _timeout, cancellationToken).ConfigureAwait(false);
+        // A page of an iterator has the page timeout, or RequestTimeout: never a view's (spec 3.8).
+        var timeout = Paging.InPage(out var page) ? page ?? _core.RequestTimeout : _timeout;
+        var element = await _core.CallAsync(method.Name, method.ProOnly, () => method.Encode(request), timeout, cancellationToken).ConfigureAwait(false);
         return method.Decode(element);
     }
 

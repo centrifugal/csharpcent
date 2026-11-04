@@ -30,4 +30,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The generator's parser and emitter, tested here: GeneratorTests.cs. -->
+  <ItemGroup>
+    <Compile Include="../../tools/Generator/Proto.cs" Link="Generator/Proto.cs" />
+    <Compile Include="../../tools/Generator/Emit.cs" Link="Generator/Emit.cs" />
+  </ItemGroup>
+
 </Project>

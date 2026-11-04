@@ -173,7 +173,14 @@ public sealed class BroadcastRetryOptions
     /// <summary>The attempts at most: 2 - one retry - by default.</summary>
     public int MaxAttempts { get; set; } = 2;
 
-    /// <summary>Bounds each attempt; the call's timeout bounds them all, waits included.</summary>
+    /// <summary>
+    /// Each attempt's own timeout, replacing <see cref="CentClientOptions.RequestTimeout"/> for
+    /// it, longer or shorter - positive, at most 24 days; null means <c>RequestTimeout</c>
+    /// bounds each attempt, and zero, a negative or an infinite one is refused. The call's
+    /// <see cref="CancellationToken"/>, and the timeout of a client from
+    /// <see cref="CentClient.WithTimeout"/>, bound them all, waits included, and end an
+    /// attempt sooner.
+    /// </summary>
     public TimeSpan? AttemptTimeout { get; set; }
 
     /// <summary>
@@ -227,9 +234,11 @@ public partial class CentClient
     /// </summary>
     /// <remarks>
     /// A channel which failed for good is not retried, and a failure no retry can fix - a
-    /// 401, an invalid request - stops it at once. No attempt starts once the call's
-    /// timeout has passed. The memory, Redis and PostgreSQL brokers keep idempotency keys,
-    /// five minutes by default; the NATS broker ignores them, and a retry publishes again.
+    /// 401, an invalid request - stops it at once. Each attempt has its own timeout:
+    /// <see cref="BroadcastRetryOptions.AttemptTimeout"/>, or <c>RequestTimeout</c>. The call
+    /// as a whole is bounded by its <see cref="CancellationToken"/>, and by the timeout of a
+    /// client from <see cref="WithTimeout"/>: no attempt starts once it has passed. The memory, Redis and PostgreSQL brokers keep idempotency keys,
+    /// five minutes by default; the NATS broker ignores them, so a retry publishes again.
     /// </remarks>
     /// <param name="request">The request.</param>
     /// <param name="options">The retries: 2 attempts by default.</param>
@@ -245,16 +254,19 @@ public partial class CentClient
         {
             throw new CentInvalidRequestException("broadcast", $"MaxAttempts is {options.MaxAttempts}: give at least 1");
         }
-        if (options.AttemptTimeout is { } t && t <= TimeSpan.Zero)
+        if (options.AttemptTimeout is { } t && !Deadline.IsValid(t))
         {
-            throw new CentInvalidRequestException("broadcast", "AttemptTimeout is not positive");
+            throw new CentInvalidRequestException("broadcast", $"AttemptTimeout is {t}: give a positive TimeSpan of at most 24 days, or null for RequestTimeout");
         }
         if (request is null)
         {
             throw new CentInvalidRequestException("broadcast", "no request");
         }
         var time = _core.Time;
-        var deadline = Deadline.After(time, _timeout);
+        // The call's deadline: a view's own timeout, or none but the token. Each attempt's
+        // is AttemptTimeout, or RequestTimeout.
+        var deadline = Deadline.After(time, _ownTimeout ? _timeout : System.Threading.Timeout.InfiniteTimeSpan);
+        var attemptTimeout = options.AttemptTimeout ?? _core.RequestTimeout;
         var key = string.IsNullOrEmpty(request.IdempotencyKey) ? Broadcasts.RandomKey() : request.IdempotencyKey;
         var channels = request.Channels?.ToList() ?? [];
         var outcomes = channels.Select(c => new ChannelResult(c, null, null, 0)).ToArray();
@@ -270,9 +282,9 @@ public partial class CentClient
             }
             var attemptRequest = request.ForAttempt(pending.Select(i => channels[i]).ToList(), key);
             var timeout = deadline.Remaining(time);
-            if (options.AttemptTimeout is { } at && (timeout == System.Threading.Timeout.InfiniteTimeSpan || at < timeout))
+            if (timeout == System.Threading.Timeout.InfiniteTimeSpan || attemptTimeout < timeout)
             {
-                timeout = at;
+                timeout = attemptTimeout;
             }
             Exception? error = null;
             try
@@ -366,7 +378,7 @@ public partial class CentClient
     }
 
     private CentClient WithTimeoutUnchecked(TimeSpan timeout) =>
-        new(_core, timeout <= TimeSpan.Zero && timeout != System.Threading.Timeout.InfiniteTimeSpan ? TimeSpan.FromTicks(1) : timeout);
+        new(_core, timeout <= TimeSpan.Zero && timeout != System.Threading.Timeout.InfiniteTimeSpan ? TimeSpan.FromTicks(1) : timeout, ownTimeout: true);
 }
 
 public sealed partial class BroadcastRequest

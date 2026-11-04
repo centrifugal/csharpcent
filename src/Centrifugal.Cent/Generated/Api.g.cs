@@ -14,7 +14,7 @@ namespace Centrifugal.Cent;
 /// <summary>
 /// PublishRequest publishes data into a channel.
 /// </summary>
-public sealed partial class PublishRequest
+public sealed partial class PublishRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel to publish into. Required.
@@ -81,6 +81,26 @@ public sealed partial class PublishRequest
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        !SkipHistory &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -104,7 +124,7 @@ public sealed partial class PublishResult
 /// <summary>
 /// BroadcastRequest publishes the same data into many channels.
 /// </summary>
-public sealed partial class BroadcastRequest
+public sealed partial class BroadcastRequest : IWireMessage
 {
     /// <summary>
     /// Channels is the list of channels to publish into. Required.
@@ -172,6 +192,26 @@ public sealed partial class BroadcastRequest
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Channels is not { Count: > 0 } &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        !SkipHistory &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing()
+    {
+        if (Channels is not { Count: > 0 })
+        {
+            return "Channels";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -182,11 +222,11 @@ public sealed partial class BroadcastRequest
 /// Centrifugo PRO only: defined here for protocol-surface consistency,
 /// Centrifugo OSS parses it but ignores it.
 /// </summary>
-public sealed partial class FilterNode
+public sealed partial class FilterNode : IWireMessage
 {
     /// <summary>
-    /// Op is the logical operation of a non-leaf node: "and", "or" or "not".
-    /// Empty for a leaf node.
+    /// Op is the logical operation of a non-leaf node. Empty for a leaf node.
+    /// One of: and, or, not.
     /// </summary>
     [JsonPropertyName("op")]
     public string? Op { get; set; }
@@ -198,8 +238,8 @@ public sealed partial class FilterNode
     public string? Key { get; set; }
 
     /// <summary>
-    /// Cmp is the comparison of a leaf node: "eq", "neq", "in", "nin", "ex",
-    /// "nex", "sw", "ew", "ct", "gt", "gte", "lt" or "lte".
+    /// Cmp is the comparison of a leaf node. One of: eq, neq, in, nin, ex, nex,
+    /// sw, ew, ct, gt, gte, lt, lte.
     /// </summary>
     [JsonPropertyName("cmp")]
     public string? Cmp { get; set; }
@@ -221,6 +261,16 @@ public sealed partial class FilterNode
     /// </summary>
     [JsonPropertyName("nodes")]
     public IList<FilterNode>? Nodes { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Op) &&
+        string.IsNullOrEmpty(Key) &&
+        string.IsNullOrEmpty(Cmp) &&
+        string.IsNullOrEmpty(Val) &&
+        Vals is not { Count: > 0 } &&
+        Nodes is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -228,7 +278,7 @@ public sealed partial class FilterNode
 /// (server-side subscription). It does not create a streaming subscription
 /// for the caller.
 /// </summary>
-public sealed partial class SubscribeRequest
+public sealed partial class SubscribeRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel to subscribe to. Required.
@@ -318,13 +368,37 @@ public sealed partial class SubscribeRequest
     /// </summary>
     [JsonPropertyName("all_users")]
     public bool AllUsers { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(User) &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        string.IsNullOrEmpty(Client) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        WireMessage.IsZero(RecoverSince) &&
+        WireMessage.IsZero(Override) &&
+        string.IsNullOrEmpty(Session) &&
+        WireMessage.IsZero(LabelFilter) &&
+        !AllUsers;
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// SubscribeOptionOverride overrides channel options for a server-side
 /// subscription. Unset fields keep the value from the channel configuration.
 /// </summary>
-public sealed partial class SubscribeOptionOverride
+public sealed partial class SubscribeOptionOverride : IWireMessage
 {
     /// <summary>
     /// Presence overrides the presence channel option.
@@ -361,6 +435,15 @@ public sealed partial class SubscribeOptionOverride
     [JsonPropertyName("force_push_join_leave")]
     [JsonConverter(typeof(WrapperConverter<bool>))]
     public bool? ForcePushJoinLeave { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Presence is null &&
+        JoinLeave is null &&
+        ForceRecovery is null &&
+        ForcePositioning is null &&
+        ForcePushJoinLeave is null;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -373,7 +456,7 @@ public sealed partial class SubscribeResult
 /// <summary>
 /// UnsubscribeRequest unsubscribes a user from a channel.
 /// </summary>
-public sealed partial class UnsubscribeRequest
+public sealed partial class UnsubscribeRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel to unsubscribe from. Required.
@@ -414,6 +497,23 @@ public sealed partial class UnsubscribeRequest
     /// </summary>
     [JsonPropertyName("all_users")]
     public bool AllUsers { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(User) &&
+        string.IsNullOrEmpty(Client) &&
+        string.IsNullOrEmpty(Session) &&
+        WireMessage.IsZero(LabelFilter) &&
+        !AllUsers;
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -427,7 +527,7 @@ public sealed partial class UnsubscribeResult
 /// <summary>
 /// Disconnect describes the code and reason clients are disconnected with.
 /// </summary>
-public sealed partial class Disconnect
+public sealed partial class Disconnect : IWireMessage
 {
     /// <summary>
     /// Code is the disconnect code.
@@ -440,12 +540,18 @@ public sealed partial class Disconnect
     /// </summary>
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Code == 0 &&
+        string.IsNullOrEmpty(Reason);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DisconnectRequest disconnects a user's connections.
 /// </summary>
-public sealed partial class DisconnectRequest
+public sealed partial class DisconnectRequest : IWireMessage
 {
     /// <summary>
     /// User is the ID of the user to disconnect. Required, unless all_users is
@@ -493,6 +599,17 @@ public sealed partial class DisconnectRequest
     /// </summary>
     [JsonPropertyName("all_users")]
     public bool AllUsers { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        WireMessage.IsZero(Disconnect) &&
+        string.IsNullOrEmpty(Client) &&
+        Whitelist is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Session) &&
+        WireMessage.IsZero(LabelFilter) &&
+        !AllUsers;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -506,13 +623,25 @@ public sealed partial class DisconnectResult
 /// PresenceRequest returns the online presence of a channel: all clients
 /// currently subscribed to it. Presence must be enabled for the channel.
 /// </summary>
-public sealed partial class PresenceRequest
+public sealed partial class PresenceRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel. Required.
     /// </summary>
     [JsonPropertyName("channel")]
     public required string Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -564,13 +693,25 @@ public sealed partial class PresenceResult
 /// number of clients and of unique users. Presence must be enabled for the
 /// channel.
 /// </summary>
-public sealed partial class PresenceStatsRequest
+public sealed partial class PresenceStatsRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel. Required.
     /// </summary>
     [JsonPropertyName("channel")]
     public required string Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -594,7 +735,7 @@ public sealed partial class PresenceStatsResult
 /// <summary>
 /// StreamPosition is a position in a channel stream.
 /// </summary>
-public sealed partial class StreamPosition
+public sealed partial class StreamPosition : IWireMessage
 {
     /// <summary>
     /// Offset is the offset in the stream.
@@ -607,13 +748,19 @@ public sealed partial class StreamPosition
     /// </summary>
     [JsonPropertyName("epoch")]
     public string? Epoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Offset == 0 &&
+        string.IsNullOrEmpty(Epoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// HistoryRequest returns publications from the history of a channel.
 /// History must be enabled for the channel.
 /// </summary>
-public sealed partial class HistoryRequest
+public sealed partial class HistoryRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel. Required.
@@ -640,6 +787,21 @@ public sealed partial class HistoryRequest
     /// </summary>
     [JsonPropertyName("reverse")]
     public bool Reverse { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        Limit == 0 &&
+        WireMessage.IsZero(Since) &&
+        !Reverse;
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -702,13 +864,25 @@ public sealed partial class HistoryResult
 /// The current top stream position is kept, so clients do not get
 /// disconnected because of insufficient state.
 /// </summary>
-public sealed partial class HistoryRemoveRequest
+public sealed partial class HistoryRemoveRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the channel. Required.
     /// </summary>
     [JsonPropertyName("channel")]
     public required string Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -722,8 +896,12 @@ public sealed partial class HistoryRemoveResult
 /// <summary>
 /// InfoRequest returns information about the running Centrifugo nodes.
 /// </summary>
-public sealed partial class InfoRequest
+public sealed partial class InfoRequest : IWireMessage
 {
+
+    bool IWireMessage.IsZero => true;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -743,7 +921,7 @@ public sealed partial class InfoResult
 /// unidirectional transports. Without expire_at the connections become
 /// non-expiring.
 /// </summary>
-public sealed partial class RefreshRequest
+public sealed partial class RefreshRequest : IWireMessage
 {
     /// <summary>
     /// User is the ID of the user to refresh. Required, unless all_users is
@@ -798,6 +976,18 @@ public sealed partial class RefreshRequest
     /// </summary>
     [JsonPropertyName("all_users")]
     public bool AllUsers { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        string.IsNullOrEmpty(Client) &&
+        !Expired &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(Session) &&
+        WireMessage.IsZero(LabelFilter) &&
+        !AllUsers;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -914,13 +1104,18 @@ public sealed partial class Process
 /// ChannelsRequest returns active channels (with one or more subscribers).
 /// It can be heavy on large deployments: there is no pagination.
 /// </summary>
-public sealed partial class ChannelsRequest
+public sealed partial class ChannelsRequest : IWireMessage
 {
     /// <summary>
     /// Pattern filters channels by name, using gobwas/glob syntax.
     /// </summary>
     [JsonPropertyName("pattern")]
     public string? Pattern { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Pattern);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -952,7 +1147,7 @@ public sealed partial class ChannelInfo
 /// the need to enable presence. At least one of user, expression or
 /// label_filter must be set. Centrifugo PRO only.
 /// </summary>
-public sealed partial class ConnectionsRequest
+public sealed partial class ConnectionsRequest : IWireMessage
 {
     /// <summary>
     /// User returns only the connections of this user ID.
@@ -972,6 +1167,13 @@ public sealed partial class ConnectionsRequest
     /// </summary>
     [JsonPropertyName("label_filter")]
     public FilterNode? LabelFilter { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        string.IsNullOrEmpty(Expression) &&
+        WireMessage.IsZero(LabelFilter);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1144,7 +1346,7 @@ public sealed partial class SubscriptionTokenInfo
 /// UpdateUserStatusRequest marks users as active and online now, and sets
 /// their state when one is given. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UpdateUserStatusRequest
+public sealed partial class UpdateUserStatusRequest : IWireMessage
 {
     /// <summary>
     /// Users is the list of user IDs to update the status for. Required.
@@ -1158,6 +1360,19 @@ public sealed partial class UpdateUserStatusRequest
     /// </summary>
     [JsonPropertyName("state")]
     public string? State { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Users is not { Count: > 0 } &&
+        string.IsNullOrEmpty(State);
+
+    string? IWireMessage.Missing()
+    {
+        if (Users is not { Count: > 0 })
+        {
+            return "Users";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1171,13 +1386,25 @@ public sealed partial class UpdateUserStatusResult
 /// <summary>
 /// GetUserStatusRequest returns the status of users. Centrifugo PRO only.
 /// </summary>
-public sealed partial class GetUserStatusRequest
+public sealed partial class GetUserStatusRequest : IWireMessage
 {
     /// <summary>
     /// Users is the list of user IDs to get the status for. Required.
     /// </summary>
     [JsonPropertyName("users")]
     public required IList<string> Users { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Users is not { Count: > 0 };
+
+    string? IWireMessage.Missing()
+    {
+        if (Users is not { Count: > 0 })
+        {
+            return "Users";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1228,13 +1455,25 @@ public sealed partial class UserStatus
 /// <summary>
 /// DeleteUserStatusRequest deletes the status of users. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeleteUserStatusRequest
+public sealed partial class DeleteUserStatusRequest : IWireMessage
 {
     /// <summary>
     /// Users is the list of user IDs to delete the status for. Required.
     /// </summary>
     [JsonPropertyName("users")]
     public required IList<string> Users { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Users is not { Count: > 0 };
+
+    string? IWireMessage.Missing()
+    {
+        if (Users is not { Count: > 0 })
+        {
+            return "Users";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1249,7 +1488,7 @@ public sealed partial class DeleteUserStatusResult
 /// BlockUserRequest blocks a user: the user is disconnected and can not
 /// connect again until unblocked or the block expires. Centrifugo PRO only.
 /// </summary>
-public sealed partial class BlockUserRequest
+public sealed partial class BlockUserRequest : IWireMessage
 {
     /// <summary>
     /// ExpireAt is the Unix time in seconds when the block expires. Optional,
@@ -1264,6 +1503,19 @@ public sealed partial class BlockUserRequest
     /// </summary>
     [JsonPropertyName("user")]
     public required string User { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        string.IsNullOrEmpty(User);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(User))
+        {
+            return "User";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1277,13 +1529,25 @@ public sealed partial class BlockUserResult
 /// <summary>
 /// UnblockUserRequest unblocks a user. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UnblockUserRequest
+public sealed partial class UnblockUserRequest : IWireMessage
 {
     /// <summary>
     /// User is the ID of the user to unblock. Required.
     /// </summary>
     [JsonPropertyName("user")]
     public required string User { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(User))
+        {
+            return "User";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1299,7 +1563,7 @@ public sealed partial class UnblockUserResult
 /// Clients using the token are disconnected shortly, and can not connect
 /// with it again. Centrifugo PRO only.
 /// </summary>
-public sealed partial class RevokeTokenRequest
+public sealed partial class RevokeTokenRequest : IWireMessage
 {
     /// <summary>
     /// ExpireAt is the Unix time in seconds when the revocation expires.
@@ -1313,6 +1577,19 @@ public sealed partial class RevokeTokenRequest
     /// </summary>
     [JsonPropertyName("uid")]
     public required string Uid { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        string.IsNullOrEmpty(Uid);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Uid))
+        {
+            return "Uid";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -1327,7 +1604,7 @@ public sealed partial class RevokeTokenResult
 /// InvalidateUserTokensRequest revokes all tokens of a user issued before a
 /// certain time (based on the iat claim of a JWT). Centrifugo PRO only.
 /// </summary>
-public sealed partial class InvalidateUserTokensRequest
+public sealed partial class InvalidateUserTokensRequest : IWireMessage
 {
     /// <summary>
     /// ExpireAt is the Unix time in seconds when the invalidation expires.
@@ -1356,6 +1633,14 @@ public sealed partial class InvalidateUserTokensRequest
     /// </summary>
     [JsonPropertyName("channel")]
     public string? Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        string.IsNullOrEmpty(User) &&
+        IssuedBefore == 0 &&
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1370,7 +1655,7 @@ public sealed partial class InvalidateUserTokensResult
 /// DeviceRegisterRequest registers a device for push notifications, or
 /// updates a registered one. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceRegisterRequest
+public sealed partial class DeviceRegisterRequest : IWireMessage
 {
     /// <summary>
     /// Id is the device ID. Omit it on first registration: Centrifugo
@@ -1381,8 +1666,8 @@ public sealed partial class DeviceRegisterRequest
     public string? Id { get; set; }
 
     /// <summary>
-    /// Provider is the provider of the device token: fcm, hms, apns or
-    /// webpush. Required.
+    /// Provider is the provider of the device token. Required. One of: fcm,
+    /// hms, apns, webpush.
     /// </summary>
     [JsonPropertyName("provider")]
     public required string Provider { get; set; }
@@ -1395,7 +1680,7 @@ public sealed partial class DeviceRegisterRequest
     public required string Token { get; set; }
 
     /// <summary>
-    /// Platform is the device platform: ios, android or web. Required.
+    /// Platform is the device platform. Required. One of: ios, android, web.
     /// </summary>
     [JsonPropertyName("platform")]
     public required string Platform { get; set; }
@@ -1432,13 +1717,41 @@ public sealed partial class DeviceRegisterRequest
     /// </summary>
     [JsonPropertyName("locale")]
     public string? Locale { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Id) &&
+        string.IsNullOrEmpty(Provider) &&
+        string.IsNullOrEmpty(Token) &&
+        string.IsNullOrEmpty(Platform) &&
+        string.IsNullOrEmpty(User) &&
+        Meta is not { Count: > 0 } &&
+        Topics is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Timezone) &&
+        string.IsNullOrEmpty(Locale);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Provider))
+        {
+            return "Provider";
+        }
+        if (string.IsNullOrEmpty(Token))
+        {
+            return "Token";
+        }
+        if (string.IsNullOrEmpty(Platform))
+        {
+            return "Platform";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// DeviceUpdateRequest updates registered devices, selected by ids and/or
 /// users. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceUpdateRequest
+public sealed partial class DeviceUpdateRequest : IWireMessage
 {
     /// <summary>
     /// Ids selects devices by ID.
@@ -1483,13 +1796,31 @@ public sealed partial class DeviceUpdateRequest
     /// </summary>
     [JsonPropertyName("locale_update")]
     public DeviceLocaleUpdate? LocaleUpdate { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Ids is not { Count: > 0 } &&
+        Users is not { Count: > 0 } &&
+        WireMessage.IsZero(UserUpdate) &&
+        WireMessage.IsZero(MetaUpdate) &&
+        WireMessage.IsZero(TopicsUpdate) &&
+        WireMessage.IsZero(TimezoneUpdate) &&
+        WireMessage.IsZero(LocaleUpdate);
+
+    string? IWireMessage.Missing()
+    {
+        if (WireMessage.Missing(TopicsUpdate) is { } missingTopicsUpdate)
+        {
+            return "TopicsUpdate." + missingTopicsUpdate;
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// DeviceRemoveRequest removes devices, selected by ids and/or users.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceRemoveRequest
+public sealed partial class DeviceRemoveRequest : IWireMessage
 {
     /// <summary>
     /// Ids selects devices to remove by ID.
@@ -1502,12 +1833,18 @@ public sealed partial class DeviceRemoveRequest
     /// </summary>
     [JsonPropertyName("users")]
     public IList<string>? Users { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Ids is not { Count: > 0 } &&
+        Users is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceUserUpdate sets the user of devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceUserUpdate
+public sealed partial class DeviceUserUpdate : IWireMessage
 {
     /// <summary>
     /// User is the user ID to set. Required. "" detaches the devices from their
@@ -1515,51 +1852,71 @@ public sealed partial class DeviceUserUpdate
     /// </summary>
     [JsonPropertyName("user")]
     public required string User { get; set; }
+
+    // A presence wrapper: sent whenever it is set, even empty (spec 2).
+    bool IWireMessage.IsZero => false;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceTimezoneUpdate sets the timezone of devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceTimezoneUpdate
+public sealed partial class DeviceTimezoneUpdate : IWireMessage
 {
     /// <summary>
     /// Timezone is the IANA time zone to set. Required. "" clears it.
     /// </summary>
     [JsonPropertyName("timezone")]
     public required string Timezone { get; set; }
+
+    // A presence wrapper: sent whenever it is set, even empty (spec 2).
+    bool IWireMessage.IsZero => false;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceLocaleUpdate sets the locale of devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceLocaleUpdate
+public sealed partial class DeviceLocaleUpdate : IWireMessage
 {
     /// <summary>
     /// Locale is the locale to set. Required. "" clears it.
     /// </summary>
     [JsonPropertyName("locale")]
     public required string Locale { get; set; }
+
+    // A presence wrapper: sent whenever it is set, even empty (spec 2).
+    bool IWireMessage.IsZero => false;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceMetaUpdate sets the meta of devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceMetaUpdate
+public sealed partial class DeviceMetaUpdate : IWireMessage
 {
     /// <summary>
     /// Meta is the meta to set. Required. An empty map clears it.
     /// </summary>
     [JsonPropertyName("meta")]
     public required IDictionary<string, string> Meta { get; set; }
+
+    // A presence wrapper: sent whenever it is set, even empty (spec 2).
+    bool IWireMessage.IsZero => false;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceTopicsUpdate changes the topics of devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceTopicsUpdate
+public sealed partial class DeviceTopicsUpdate : IWireMessage
 {
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -1569,12 +1926,25 @@ public sealed partial class DeviceTopicsUpdate
     /// </summary>
     [JsonPropertyName("topics")]
     public IList<string>? Topics { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Op) &&
+        Topics is not { Count: > 0 };
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Op))
+        {
+            return "Op";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// DeviceFilter selects devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceFilter
+public sealed partial class DeviceFilter : IWireMessage
 {
     /// <summary>
     /// Ids selects devices by ID.
@@ -1605,13 +1975,22 @@ public sealed partial class DeviceFilter
     /// </summary>
     [JsonPropertyName("platforms")]
     public IList<string>? Platforms { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Ids is not { Count: > 0 } &&
+        Users is not { Count: > 0 } &&
+        Topics is not { Count: > 0 } &&
+        Providers is not { Count: > 0 } &&
+        Platforms is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceListRequest returns a paginated list of registered devices.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceListRequest
+public sealed partial class DeviceListRequest : IWireMessage
 {
     /// <summary>
     /// Filter selects the devices to list: all of them when unset.
@@ -1657,12 +2036,23 @@ public sealed partial class DeviceListRequest
     /// </summary>
     [JsonPropertyName("limit")]
     public int Limit { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Filter) &&
+        !IncludeTotalCount &&
+        !IncludeMeta &&
+        !IncludeTopics &&
+        !IncludeWebpushKeys &&
+        string.IsNullOrEmpty(Cursor) &&
+        Limit == 0;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceTopicFilter selects device topic subscriptions. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceTopicFilter
+public sealed partial class DeviceTopicFilter : IWireMessage
 {
     /// <summary>
     /// DeviceIds selects by device ID.
@@ -1699,13 +2089,23 @@ public sealed partial class DeviceTopicFilter
     /// </summary>
     [JsonPropertyName("topic_prefix")]
     public string? TopicPrefix { get; set; }
+
+    bool IWireMessage.IsZero =>
+        DeviceIds is not { Count: > 0 } &&
+        DeviceProviders is not { Count: > 0 } &&
+        DevicePlatforms is not { Count: > 0 } &&
+        DeviceUsers is not { Count: > 0 } &&
+        Topics is not { Count: > 0 } &&
+        string.IsNullOrEmpty(TopicPrefix);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// DeviceTopicListRequest returns a paginated list of device topic
 /// subscriptions. Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceTopicListRequest
+public sealed partial class DeviceTopicListRequest : IWireMessage
 {
     /// <summary>
     /// Filter selects the device topics to list.
@@ -1738,12 +2138,21 @@ public sealed partial class DeviceTopicListRequest
     /// </summary>
     [JsonPropertyName("limit")]
     public int Limit { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Filter) &&
+        !IncludeTotalCount &&
+        !IncludeDevice &&
+        string.IsNullOrEmpty(Cursor) &&
+        Limit == 0;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// UserTopicFilter selects user topic subscriptions. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UserTopicFilter
+public sealed partial class UserTopicFilter : IWireMessage
 {
     /// <summary>
     /// Users selects by user.
@@ -1762,13 +2171,20 @@ public sealed partial class UserTopicFilter
     /// </summary>
     [JsonPropertyName("topic_prefix")]
     public string? TopicPrefix { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Users is not { Count: > 0 } &&
+        Topics is not { Count: > 0 } &&
+        string.IsNullOrEmpty(TopicPrefix);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// UserTopicListRequest returns a paginated list of user topic
 /// subscriptions. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UserTopicListRequest
+public sealed partial class UserTopicListRequest : IWireMessage
 {
     /// <summary>
     /// Filter selects the user topics to list.
@@ -1795,6 +2211,14 @@ public sealed partial class UserTopicListRequest
     /// </summary>
     [JsonPropertyName("limit")]
     public int Limit { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Filter) &&
+        !IncludeTotalCount &&
+        string.IsNullOrEmpty(Cursor) &&
+        Limit == 0;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1802,7 +2226,7 @@ public sealed partial class UserTopicListRequest
 /// list is what decides who gets a push sent to a topic.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class DeviceTopicUpdateRequest
+public sealed partial class DeviceTopicUpdateRequest : IWireMessage
 {
     /// <summary>
     /// DeviceId is the ID of the device. Required.
@@ -1811,7 +2235,7 @@ public sealed partial class DeviceTopicUpdateRequest
     public required string DeviceId { get; set; }
 
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -1829,13 +2253,32 @@ public sealed partial class DeviceTopicUpdateRequest
     /// </summary>
     [JsonPropertyName("user")]
     public string? User { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(DeviceId) &&
+        string.IsNullOrEmpty(Op) &&
+        Topics is not { Count: > 0 } &&
+        string.IsNullOrEmpty(User);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(DeviceId))
+        {
+            return "DeviceId";
+        }
+        if (string.IsNullOrEmpty(Op))
+        {
+            return "Op";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// UserTopicUpdateRequest changes the topics of a user. The change is also
 /// applied to the user's registered devices. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UserTopicUpdateRequest
+public sealed partial class UserTopicUpdateRequest : IWireMessage
 {
     /// <summary>
     /// User is the user ID. Required. "" updates the global binding, which every
@@ -1845,7 +2288,7 @@ public sealed partial class UserTopicUpdateRequest
     public required string User { get; set; }
 
     /// <summary>
-    /// Op is the operation: add, remove or set. Required.
+    /// Op is the operation. Required. One of: add, remove, set.
     /// </summary>
     [JsonPropertyName("op")]
     public required string Op { get; set; }
@@ -1855,6 +2298,20 @@ public sealed partial class UserTopicUpdateRequest
     /// </summary>
     [JsonPropertyName("topics")]
     public IList<string>? Topics { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        string.IsNullOrEmpty(Op) &&
+        Topics is not { Count: > 0 };
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Op))
+        {
+            return "Op";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2118,7 +2575,7 @@ public sealed partial class UserTopic
 /// PushRecipient describes who receives a push notification. Set only one
 /// of its fields. Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushRecipient
+public sealed partial class PushRecipient : IWireMessage
 {
     /// <summary>
     /// Filter sends to devices from Centrifugo device storage that match the
@@ -2175,13 +2632,26 @@ public sealed partial class PushRecipient
     /// </summary>
     [JsonPropertyName("webpush_tokens")]
     public IList<string>? WebpushTokens { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Filter) &&
+        FcmTokens is not { Count: > 0 } &&
+        string.IsNullOrEmpty(FcmTopic) &&
+        string.IsNullOrEmpty(FcmCondition) &&
+        HmsTokens is not { Count: > 0 } &&
+        string.IsNullOrEmpty(HmsTopic) &&
+        string.IsNullOrEmpty(HmsCondition) &&
+        ApnsTokens is not { Count: > 0 } &&
+        WebpushTokens is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// PushNotification is a push notification in the format of each provider.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushNotification
+public sealed partial class PushNotification : IWireMessage
 {
     /// <summary>
     /// Fcm is the notification for FCM.
@@ -2210,15 +2680,44 @@ public sealed partial class PushNotification
     /// <summary>
     /// ExpireAt is the Unix time in seconds when Centrifugo stops trying to
     /// send the notification. Not related to the providers' TTL fields.
+    /// Required when the request sets limit_strategy.
     /// </summary>
     [JsonPropertyName("expire_at")]
     public long ExpireAt { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Fcm) &&
+        WireMessage.IsZero(Hms) &&
+        WireMessage.IsZero(Apns) &&
+        WireMessage.IsZero(Webpush) &&
+        ExpireAt == 0;
+
+    string? IWireMessage.Missing()
+    {
+        if (WireMessage.Missing(Fcm) is { } missingFcm)
+        {
+            return "Fcm." + missingFcm;
+        }
+        if (WireMessage.Missing(Hms) is { } missingHms)
+        {
+            return "Hms." + missingHms;
+        }
+        if (WireMessage.Missing(Apns) is { } missingApns)
+        {
+            return "Apns." + missingApns;
+        }
+        if (WireMessage.Missing(Webpush) is { } missingWebpush)
+        {
+            return "Webpush." + missingWebpush;
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// FcmPushNotification is a notification for FCM. Centrifugo PRO only.
 /// </summary>
-public sealed partial class FcmPushNotification
+public sealed partial class FcmPushNotification : IWireMessage
 {
     /// <summary>
     /// Message is the FCM Message object as JSON. Required.
@@ -2226,12 +2725,24 @@ public sealed partial class FcmPushNotification
     [JsonPropertyName("message")]
     [JsonConverter(typeof(PayloadConverter))]
     public required object Message { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Message is null;
+
+    string? IWireMessage.Missing()
+    {
+        if (Message is null)
+        {
+            return "Message";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// HmsPushNotification is a notification for HMS. Centrifugo PRO only.
 /// </summary>
-public sealed partial class HmsPushNotification
+public sealed partial class HmsPushNotification : IWireMessage
 {
     /// <summary>
     /// Message is the HMS Message object as JSON. Required.
@@ -2239,12 +2750,24 @@ public sealed partial class HmsPushNotification
     [JsonPropertyName("message")]
     [JsonConverter(typeof(PayloadConverter))]
     public required object Message { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Message is null;
+
+    string? IWireMessage.Missing()
+    {
+        if (Message is null)
+        {
+            return "Message";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// ApnsPushNotification is a notification for APNs. Centrifugo PRO only.
 /// </summary>
-public sealed partial class ApnsPushNotification
+public sealed partial class ApnsPushNotification : IWireMessage
 {
     /// <summary>
     /// Headers are the APNs request headers.
@@ -2258,13 +2781,26 @@ public sealed partial class ApnsPushNotification
     [JsonPropertyName("payload")]
     [JsonConverter(typeof(PayloadConverter))]
     public required object Payload { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Headers is not { Count: > 0 } &&
+        Payload is null;
+
+    string? IWireMessage.Missing()
+    {
+        if (Payload is null)
+        {
+            return "Payload";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// WebPushPushNotification is a notification for Web Push.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class WebPushPushNotification
+public sealed partial class WebPushPushNotification : IWireMessage
 {
     /// <summary>
     /// Headers are Web Push HTTP headers. Recognized keys: TTL (seconds,
@@ -2280,6 +2816,19 @@ public sealed partial class WebPushPushNotification
     [JsonPropertyName("payload")]
     [JsonConverter(typeof(PayloadConverter))]
     public required object Payload { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Headers is not { Count: > 0 } &&
+        Payload is null;
+
+    string? IWireMessage.Missing()
+    {
+        if (Payload is null)
+        {
+            return "Payload";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2287,7 +2836,7 @@ public sealed partial class WebPushPushNotification
 /// queued and sent to the provider by Centrifugo workers.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class SendPushNotificationRequest
+public sealed partial class SendPushNotificationRequest : IWireMessage
 {
     /// <summary>
     /// Recipient is who receives the notification. Required.
@@ -2327,7 +2876,8 @@ public sealed partial class SendPushNotificationRequest
     /// <summary>
     /// LimitStrategy sets time constraints and rate limits. Only applies
     /// with a filter recipient; devices are then processed one by one
-    /// instead of in batches.
+    /// instead of in batches. Needs notification.expire_at: a push the limits
+    /// hold back is not tried forever.
     /// </summary>
     [JsonPropertyName("limit_strategy")]
     public PushLimitStrategy? LimitStrategy { get; set; }
@@ -2359,26 +2909,64 @@ public sealed partial class SendPushNotificationRequest
     /// </summary>
     [JsonPropertyName("use_meta")]
     public bool UseMeta { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(Recipient) &&
+        WireMessage.IsZero(Notification) &&
+        string.IsNullOrEmpty(Uid) &&
+        SendAt == 0 &&
+        !OptimizeForReliability &&
+        WireMessage.IsZero(LimitStrategy) &&
+        string.IsNullOrEmpty(AnalyticsUid) &&
+        Localizations is not { Count: > 0 } &&
+        !UseTemplating &&
+        !UseMeta;
+
+    string? IWireMessage.Missing()
+    {
+        if (WireMessage.IsZero(Recipient))
+        {
+            return "Recipient";
+        }
+        if (WireMessage.IsZero(Notification))
+        {
+            return "Notification";
+        }
+        if (WireMessage.Missing(Notification) is { } missingNotification)
+        {
+            return "Notification." + missingNotification;
+        }
+        if (WireMessage.Missing(LimitStrategy) is { } missingLimitStrategy)
+        {
+            return "LimitStrategy." + missingLimitStrategy;
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// PushLocalization holds translations for one language/locale.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushLocalization
+public sealed partial class PushLocalization : IWireMessage
 {
     /// <summary>
     /// Translations maps variable name to value for the language/locale.
     /// </summary>
     [JsonPropertyName("translations")]
     public IDictionary<string, string>? Translations { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Translations is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// PushLimitStrategy limits when and how often pushes are sent.
 /// Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushLimitStrategy
+public sealed partial class PushLimitStrategy : IWireMessage
 {
     /// <summary>
     /// RateLimit sets rate limit policies.
@@ -2391,13 +2979,30 @@ public sealed partial class PushLimitStrategy
     /// </summary>
     [JsonPropertyName("time_limit")]
     public PushTimeLimitStrategy? TimeLimit { get; set; }
+
+    bool IWireMessage.IsZero =>
+        WireMessage.IsZero(RateLimit) &&
+        WireMessage.IsZero(TimeLimit);
+
+    string? IWireMessage.Missing()
+    {
+        if (WireMessage.Missing(RateLimit) is { } missingRateLimit)
+        {
+            return "RateLimit." + missingRateLimit;
+        }
+        if (WireMessage.Missing(TimeLimit) is { } missingTimeLimit)
+        {
+            return "TimeLimit." + missingTimeLimit;
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// PushTimeLimitStrategy sends pushes within a window of the device local
 /// time. Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushTimeLimitStrategy
+public sealed partial class PushTimeLimitStrategy : IWireMessage
 {
     /// <summary>
     /// SendAfterTime is the local time, as HH:MM:SS, after which the push
@@ -2419,12 +3024,30 @@ public sealed partial class PushTimeLimitStrategy
     /// </summary>
     [JsonPropertyName("no_tz_send_now")]
     public bool NoTzSendNow { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(SendAfterTime) &&
+        string.IsNullOrEmpty(SendBeforeTime) &&
+        !NoTzSendNow;
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(SendAfterTime))
+        {
+            return "SendAfterTime";
+        }
+        if (string.IsNullOrEmpty(SendBeforeTime))
+        {
+            return "SendBeforeTime";
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// PushRateLimitStrategy rate limits pushes per device. Centrifugo PRO only.
 /// </summary>
-public sealed partial class PushRateLimitStrategy
+public sealed partial class PushRateLimitStrategy : IWireMessage
 {
     /// <summary>
     /// Key is an optional key for the rate limit policy. Supports variables
@@ -2445,12 +3068,26 @@ public sealed partial class PushRateLimitStrategy
     /// </summary>
     [JsonPropertyName("drop_if_rate_limited")]
     public bool DropIfRateLimited { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Policies is not { Count: > 0 } &&
+        !DropIfRateLimited;
+
+    string? IWireMessage.Missing()
+    {
+        if (WireMessage.MissingIn(Policies) is { } missingPolicies)
+        {
+            return "Policies" + missingPolicies;
+        }
+        return null;
+    }
 }
 
 /// <summary>
 /// RateLimitPolicy allows rate pushes per interval_ms. Centrifugo PRO only.
 /// </summary>
-public sealed partial class RateLimitPolicy
+public sealed partial class RateLimitPolicy : IWireMessage
 {
     /// <summary>
     /// Rate is the allowed number of pushes per interval. Required.
@@ -2463,6 +3100,23 @@ public sealed partial class RateLimitPolicy
     /// </summary>
     [JsonPropertyName("interval_ms")]
     public required int IntervalMs { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Rate == 0 &&
+        IntervalMs == 0;
+
+    string? IWireMessage.Missing()
+    {
+        if (Rate == 0)
+        {
+            return "Rate";
+        }
+        if (IntervalMs == 0)
+        {
+            return "IntervalMs";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2483,7 +3137,7 @@ public sealed partial class SendPushNotificationResult
 /// UpdatePushStatusRequest saves the delivery or interaction status of a
 /// push notification to analytics. Experimental. Centrifugo PRO only.
 /// </summary>
-public sealed partial class UpdatePushStatusRequest
+public sealed partial class UpdatePushStatusRequest : IWireMessage
 {
     /// <summary>
     /// AnalyticsUid is the analytics_uid of the push notification (as in
@@ -2493,8 +3147,8 @@ public sealed partial class UpdatePushStatusRequest
     public required string AnalyticsUid { get; set; }
 
     /// <summary>
-    /// Status is the status of the push notification: delivered or
-    /// interacted. Required.
+    /// Status is the status of the push notification. Required. One of:
+    /// delivered, interacted.
     /// </summary>
     [JsonPropertyName("status")]
     public required string Status { get; set; }
@@ -2510,6 +3164,29 @@ public sealed partial class UpdatePushStatusRequest
     /// </summary>
     [JsonPropertyName("msg_id")]
     public string? MsgId { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(AnalyticsUid) &&
+        string.IsNullOrEmpty(Status) &&
+        string.IsNullOrEmpty(DeviceId) &&
+        string.IsNullOrEmpty(MsgId);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(AnalyticsUid))
+        {
+            return "AnalyticsUid";
+        }
+        if (string.IsNullOrEmpty(Status))
+        {
+            return "Status";
+        }
+        if (string.IsNullOrEmpty(DeviceId))
+        {
+            return "DeviceId";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2524,13 +3201,25 @@ public sealed partial class UpdatePushStatusResult
 /// CancelPushRequest cancels a delayed push notification (sent with
 /// send_at). Centrifugo PRO only.
 /// </summary>
-public sealed partial class CancelPushRequest
+public sealed partial class CancelPushRequest : IWireMessage
 {
     /// <summary>
     /// Uid is the uid of the push notification to cancel. Required.
     /// </summary>
     [JsonPropertyName("uid")]
     public required string Uid { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Uid);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Uid))
+        {
+            return "Uid";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2544,7 +3233,7 @@ public sealed partial class CancelPushResult
 /// <summary>
 /// MapPublishRequest publishes or updates a key in a map channel.
 /// </summary>
-public sealed partial class MapPublishRequest
+public sealed partial class MapPublishRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
@@ -2630,12 +3319,40 @@ public sealed partial class MapPublishRequest
     public long Score { get; set; }
 
     /// <summary>
-    /// KeyMode makes the publish conditional: "if_new" writes only if the
-    /// key does not exist, "if_exists" only if it exists. Empty always
-    /// writes.
+    /// KeyMode makes the publish conditional: if_new writes only if the key
+    /// does not exist, if_exists only if it exists. Empty always writes.
+    /// One of: if_new, if_exists.
     /// </summary>
     [JsonPropertyName("key_mode")]
     public string? KeyMode { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        StreamData is null &&
+        string.IsNullOrEmpty(B64StreamData) &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch) &&
+        Score == 0 &&
+        string.IsNullOrEmpty(KeyMode);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        if (string.IsNullOrEmpty(Key))
+        {
+            return "Key";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2673,7 +3390,7 @@ public sealed partial class MapPublishResult
 /// <summary>
 /// MapRemoveRequest removes a key from a map channel.
 /// </summary>
-public sealed partial class MapRemoveRequest
+public sealed partial class MapRemoveRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
@@ -2695,6 +3412,24 @@ public sealed partial class MapRemoveRequest
     /// </summary>
     [JsonPropertyName("idempotency_key")]
     public string? IdempotencyKey { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(Key) &&
+        string.IsNullOrEmpty(IdempotencyKey);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        if (string.IsNullOrEmpty(Key))
+        {
+            return "Key";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2733,7 +3468,7 @@ public sealed partial class MapRemoveResult
 /// MapReadStateRequest reads the current state of a map channel, with
 /// optional pagination.
 /// </summary>
-public sealed partial class MapReadStateRequest
+public sealed partial class MapReadStateRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
@@ -2784,6 +3519,24 @@ public sealed partial class MapReadStateRequest
     /// </summary>
     [JsonPropertyName("revision_epoch")]
     public string? RevisionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(Cursor) &&
+        Limit == 0 &&
+        string.IsNullOrEmpty(Key) &&
+        !Asc &&
+        RevisionOffset == 0 &&
+        string.IsNullOrEmpty(RevisionEpoch);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2869,7 +3622,7 @@ public sealed partial class MapEntry
 /// <summary>
 /// MapReadStreamRequest reads the change stream of a map channel.
 /// </summary>
-public sealed partial class MapReadStreamRequest
+public sealed partial class MapReadStreamRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
@@ -2903,6 +3656,22 @@ public sealed partial class MapReadStreamRequest
     /// </summary>
     [JsonPropertyName("reverse")]
     public bool Reverse { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        SinceOffset == 0 &&
+        string.IsNullOrEmpty(SinceEpoch) &&
+        Limit == 0 &&
+        !Reverse;
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2932,13 +3701,25 @@ public sealed partial class MapReadStreamResult
 /// <summary>
 /// MapStatsRequest returns statistics about a map channel.
 /// </summary>
-public sealed partial class MapStatsRequest
+public sealed partial class MapStatsRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
     /// </summary>
     [JsonPropertyName("channel")]
     public required string Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2956,13 +3737,25 @@ public sealed partial class MapStatsResult
 /// <summary>
 /// MapClearRequest removes all state and stream data of a map channel.
 /// </summary>
-public sealed partial class MapClearRequest
+public sealed partial class MapClearRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the map channel. Required.
     /// </summary>
     [JsonPropertyName("channel")]
     public required string Channel { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -2977,7 +3770,7 @@ public sealed partial class MapClearResult
 /// shared poll channel, without waiting for the next poll cycle. Requires
 /// versioned mode and publish_enabled on the namespace.
 /// </summary>
-public sealed partial class SharedPollPublishRequest
+public sealed partial class SharedPollPublishRequest : IWireMessage
 {
     /// <summary>
     /// Channel is the name of the shared poll channel. Required.
@@ -3017,6 +3810,31 @@ public sealed partial class SharedPollPublishRequest
     /// </summary>
     [JsonPropertyName("epoch")]
     public string? Epoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Channel) &&
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        Version == 0 &&
+        string.IsNullOrEmpty(Epoch);
+
+    string? IWireMessage.Missing()
+    {
+        if (string.IsNullOrEmpty(Channel))
+        {
+            return "Channel";
+        }
+        if (string.IsNullOrEmpty(Key))
+        {
+            return "Key";
+        }
+        if (Version == 0)
+        {
+            return "Version";
+        }
+        return null;
+    }
 }
 
 /// <summary>
@@ -3025,4 +3843,144 @@ public sealed partial class SharedPollPublishRequest
 /// </summary>
 public sealed partial class SharedPollPublishResult
 {
+}
+
+/// <summary>
+/// The values of the op field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class FilterNodeOpValues
+{
+    /// <summary><c>and</c>.</summary>
+    public const string And = "and";
+
+    /// <summary><c>or</c>.</summary>
+    public const string Or = "or";
+
+    /// <summary><c>not</c>.</summary>
+    public const string Not = "not";
+}
+
+/// <summary>
+/// The values of the cmp field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class CmpValues
+{
+    /// <summary><c>eq</c>.</summary>
+    public const string Eq = "eq";
+
+    /// <summary><c>neq</c>.</summary>
+    public const string Neq = "neq";
+
+    /// <summary><c>in</c>.</summary>
+    public const string In = "in";
+
+    /// <summary><c>nin</c>.</summary>
+    public const string Nin = "nin";
+
+    /// <summary><c>ex</c>.</summary>
+    public const string Ex = "ex";
+
+    /// <summary><c>nex</c>.</summary>
+    public const string Nex = "nex";
+
+    /// <summary><c>sw</c>.</summary>
+    public const string Sw = "sw";
+
+    /// <summary><c>ew</c>.</summary>
+    public const string Ew = "ew";
+
+    /// <summary><c>ct</c>.</summary>
+    public const string Ct = "ct";
+
+    /// <summary><c>gt</c>.</summary>
+    public const string Gt = "gt";
+
+    /// <summary><c>gte</c>.</summary>
+    public const string Gte = "gte";
+
+    /// <summary><c>lt</c>.</summary>
+    public const string Lt = "lt";
+
+    /// <summary><c>lte</c>.</summary>
+    public const string Lte = "lte";
+}
+
+/// <summary>
+/// The values of the provider field of DeviceRegisterRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class ProviderValues
+{
+    /// <summary><c>fcm</c>.</summary>
+    public const string Fcm = "fcm";
+
+    /// <summary><c>hms</c>.</summary>
+    public const string Hms = "hms";
+
+    /// <summary><c>apns</c>.</summary>
+    public const string Apns = "apns";
+
+    /// <summary><c>webpush</c>.</summary>
+    public const string WebPush = "webpush";
+}
+
+/// <summary>
+/// The values of the platform field of DeviceRegisterRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class PlatformValues
+{
+    /// <summary><c>ios</c>.</summary>
+    public const string IOS = "ios";
+
+    /// <summary><c>android</c>.</summary>
+    public const string Android = "android";
+
+    /// <summary><c>web</c>.</summary>
+    public const string Web = "web";
+}
+
+/// <summary>
+/// The values of the op field of DeviceTopicsUpdate, DeviceTopicUpdateRequest and
+/// UserTopicUpdateRequest. The field is a string: a value Centrifugo sends or accepts which
+/// these do not name is still a valid one.
+/// </summary>
+public static class OpValues
+{
+    /// <summary><c>add</c>.</summary>
+    public const string Add = "add";
+
+    /// <summary><c>remove</c>.</summary>
+    public const string Remove = "remove";
+
+    /// <summary><c>set</c>.</summary>
+    public const string Set = "set";
+}
+
+/// <summary>
+/// The values of the status field of UpdatePushStatusRequest. The field is a string: a
+/// value Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class StatusValues
+{
+    /// <summary><c>delivered</c>.</summary>
+    public const string Delivered = "delivered";
+
+    /// <summary><c>interacted</c>.</summary>
+    public const string Interacted = "interacted";
+}
+
+/// <summary>
+/// The values of the key_mode field of MapPublishRequest. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class KeyModeValues
+{
+    /// <summary><c>if_new</c>.</summary>
+    public const string IfNew = "if_new";
+
+    /// <summary><c>if_exists</c>.</summary>
+    public const string IfExists = "if_exists";
 }

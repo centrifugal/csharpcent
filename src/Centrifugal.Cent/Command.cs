@@ -17,6 +17,13 @@ namespace Centrifugal.Cent;
 /// take whole, <see cref="Payload"/> the JSON object, never a string of it.
 /// </para>
 /// <para>
+/// Where the method goes apart from the payload - the outbox table's <c>method</c> column, a
+/// message header or attribute - Centrifugo reads the payload as the request itself: write
+/// <see cref="Payload"/>'s JSON as it is, as the example does. A JSON string holding it is a
+/// bad request there, dropped with only Centrifugo's log saying so; only a message which is
+/// a whole command may hold its payload as a string, for CDC pipelines.
+/// </para>
+/// <para>
 /// A consumer keeps commands in order only within a partition: a channel's commands keep
 /// their order only when every writer derives their partition from the channel the same way.
 /// </para>

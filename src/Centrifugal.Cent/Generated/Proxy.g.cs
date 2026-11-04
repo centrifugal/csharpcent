@@ -19,10 +19,10 @@ namespace Centrifugal.Cent.Proxy;
 /// compares one tag: it sets key, cmp and val or vals, and leaves op empty. A
 /// logical node combines its nodes: it sets op and nodes only.
 /// </summary>
-public sealed partial class FilterNode
+public sealed partial class FilterNode : IWireMessage
 {
     /// <summary>
-    /// Op is the logical operation: "and", "or" or "not". Empty for a leaf node.
+    /// Op is the logical operation. Empty for a leaf node. One of: and, or, not.
     /// </summary>
     [JsonPropertyName("op")]
     public string? Op { get; set; }
@@ -34,9 +34,9 @@ public sealed partial class FilterNode
     public string? Key { get; set; }
 
     /// <summary>
-    /// Cmp is the comparison of a leaf node: "eq", "neq", "in", "nin", "ex"
-    /// (exists), "nex" (does not exist), "sw" (starts with), "ew" (ends with), "ct"
-    /// (contains), "gt", "gte", "lt" or "lte".
+    /// Cmp is the comparison of a leaf node: ex is exists, nex does not exist,
+    /// sw starts with, ew ends with, ct contains. One of: eq, neq, in, nin, ex,
+    /// nex, sw, ew, ct, gt, gte, lt, lte.
     /// </summary>
     [JsonPropertyName("cmp")]
     public string? Cmp { get; set; }
@@ -58,13 +58,23 @@ public sealed partial class FilterNode
     /// </summary>
     [JsonPropertyName("nodes")]
     public IList<FilterNode>? Nodes { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Op) &&
+        string.IsNullOrEmpty(Key) &&
+        string.IsNullOrEmpty(Cmp) &&
+        string.IsNullOrEmpty(Val) &&
+        Vals is not { Count: > 0 } &&
+        Nodes is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// Disconnect, returned instead of a result, disconnects the client. Only
 /// Connect, Subscribe, Publish, RPC, MapPublish and MapRemove honour it.
 /// </summary>
-public sealed partial class Disconnect
+public sealed partial class Disconnect : IWireMessage
 {
     /// <summary>
     /// Code must be in the range [4000, 4999], which Centrifugo leaves to
@@ -80,6 +90,12 @@ public sealed partial class Disconnect
     /// </summary>
     [JsonPropertyName("reason")]
     public string? Reason { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Code == 0 &&
+        string.IsNullOrEmpty(Reason);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -88,7 +104,7 @@ public sealed partial class Disconnect
 /// it to the client; SharedPollRefresh and NotifyChannelState take it as a
 /// failed request.
 /// </summary>
-public sealed partial class ProxyError
+public sealed partial class ProxyError : IWireMessage
 {
     /// <summary>
     /// Code must be in the range [400, 1999], which Centrifugo leaves to
@@ -110,6 +126,13 @@ public sealed partial class ProxyError
     /// </summary>
     [JsonPropertyName("temporary")]
     public bool Temporary { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Code == 0 &&
+        string.IsNullOrEmpty(Message) &&
+        !Temporary;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -131,14 +154,15 @@ public sealed partial class ConnectRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -181,7 +205,7 @@ public sealed partial class ConnectRequest
 /// SubscribeOptions are the options of a server-side subscription returned in
 /// ConnectResult.subs.
 /// </summary>
-public sealed partial class SubscribeOptions
+public sealed partial class SubscribeOptions : IWireMessage
 {
     /// <summary>
     /// ExpireAt is when the subscription expires, in Unix seconds. Zero means it
@@ -244,12 +268,24 @@ public sealed partial class SubscribeOptions
     /// </summary>
     [JsonPropertyName("cache_recover")]
     public bool CacheRecover { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        WireMessage.IsZero(Override) &&
+        WireMessage.IsZero(ServerTagsFilter) &&
+        !CacheRecover;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// ConnectResult accepts the connection.
 /// </summary>
-public sealed partial class ConnectResult
+public sealed partial class ConnectResult : IWireMessage
 {
     /// <summary>
     /// User is the ID of the user the connection belongs to. Empty accepts an
@@ -327,6 +363,30 @@ public sealed partial class ConnectResult
     /// </summary>
     [JsonPropertyName("labels")]
     public IDictionary<string, string>? Labels { get; set; }
+
+    /// <summary>
+    /// Profile assigns the connection to a dictionary compression profile, as the
+    /// profile claim of a connection token does: it overrides the profile the
+    /// client declared. Centrifugo PRO only.
+    /// </summary>
+    [JsonPropertyName("profile")]
+    public string? Profile { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(User) &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        Channels is not { Count: > 0 } &&
+        Subs is not { Count: > 0 } &&
+        Meta is null &&
+        Caps is not { Count: > 0 } &&
+        Labels is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Profile);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -334,7 +394,7 @@ public sealed partial class ConnectResult
 /// operation in a channel when any of its capabilities both allows the
 /// operation and matches the channel. Centrifugo PRO only.
 /// </summary>
-public sealed partial class ChannelsCapability
+public sealed partial class ChannelsCapability : IWireMessage
 {
     /// <summary>
     /// Channels are the channels, or channel patterns, it applies to.
@@ -343,18 +403,25 @@ public sealed partial class ChannelsCapability
     public IList<string>? Channels { get; set; }
 
     /// <summary>
-    /// Allow are the operations it grants: "sub" (subscribe), "pub" (publish),
-    /// "hst" (history) and "prs" (presence).
+    /// Allow are the operations it grants: sub is subscribe, pub publish, hst
+    /// history, prs presence. One of: sub, pub, hst, prs.
     /// </summary>
     [JsonPropertyName("allow")]
     public IList<string>? Allow { get; set; }
 
     /// <summary>
-    /// Match is how channels are matched: empty for exact names, "wildcard" or
-    /// "regex".
+    /// Match is how channels are matched: empty for exact names. One of:
+    /// wildcard, regex.
     /// </summary>
     [JsonPropertyName("match")]
     public string? Match { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Channels is not { Count: > 0 } &&
+        Allow is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Match);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -375,14 +442,15 @@ public sealed partial class RefreshRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -411,7 +479,7 @@ public sealed partial class RefreshRequest
 /// <summary>
 /// RefreshResult extends the connection, or ends it.
 /// </summary>
-public sealed partial class RefreshResult
+public sealed partial class RefreshResult : IWireMessage
 {
     /// <summary>
     /// Expired disconnects the client: its connection has expired.
@@ -450,6 +518,16 @@ public sealed partial class RefreshResult
     /// </summary>
     [JsonPropertyName("caps")]
     public IList<ChannelsCapability>? Caps { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Expired &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Meta is null &&
+        Caps is not { Count: > 0 };
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -470,14 +548,15 @@ public sealed partial class SubscribeRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -532,7 +611,7 @@ public sealed partial class SubscribeRequest
 /// SubscribeOptionOverride overrides channel options of the namespace for one
 /// subscription. An unset field keeps the namespace's value.
 /// </summary>
-public sealed partial class SubscribeOptionOverride
+public sealed partial class SubscribeOptionOverride : IWireMessage
 {
     /// <summary>
     /// Presence overrides the namespace's presence option.
@@ -569,12 +648,21 @@ public sealed partial class SubscribeOptionOverride
     [JsonPropertyName("force_push_join_leave")]
     [JsonConverter(typeof(WrapperConverter<bool>))]
     public bool? ForcePushJoinLeave { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Presence is null &&
+        JoinLeave is null &&
+        ForceRecovery is null &&
+        ForcePositioning is null &&
+        ForcePushJoinLeave is null;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// SubscribeResult accepts the subscription.
 /// </summary>
-public sealed partial class SubscribeResult
+public sealed partial class SubscribeResult : IWireMessage
 {
     /// <summary>
     /// ExpireAt is when the subscription expires, in Unix seconds, unless
@@ -620,8 +708,8 @@ public sealed partial class SubscribeResult
     public SubscribeOptionOverride? Override { get; set; }
 
     /// <summary>
-    /// Allow are capabilities granted in the channel for this subscription:
-    /// "sub", "pub", "hst" and "prs". Centrifugo PRO only.
+    /// Allow are capabilities granted in the channel for this subscription.
+    /// Centrifugo PRO only. One of: sub, pub, hst, prs.
     /// </summary>
     [JsonPropertyName("allow")]
     public IList<string>? Allow { get; set; }
@@ -632,6 +720,18 @@ public sealed partial class SubscribeResult
     /// </summary>
     [JsonPropertyName("server_tags_filter")]
     public FilterNode? ServerTagsFilter { get; set; }
+
+    bool IWireMessage.IsZero =>
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        WireMessage.IsZero(Override) &&
+        Allow is not { Count: > 0 } &&
+        WireMessage.IsZero(ServerTagsFilter);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -652,14 +752,15 @@ public sealed partial class PublishRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -708,7 +809,7 @@ public sealed partial class PublishRequest
 /// PublishResult accepts the publication. Fields left unset keep what the
 /// client sent, or the defaults.
 /// </summary>
-public sealed partial class PublishResult
+public sealed partial class PublishResult : IWireMessage
 {
     /// <summary>
     /// Data replaces the data the client sent.
@@ -764,6 +865,18 @@ public sealed partial class PublishResult
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        !SkipHistory &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -784,14 +897,15 @@ public sealed partial class MapPublishRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -846,7 +960,7 @@ public sealed partial class MapPublishRequest
 /// MapPublishResult accepts the publication, even when empty. Fields left
 /// unset keep what the client sent, or the defaults.
 /// </summary>
-public sealed partial class MapPublishResult
+public sealed partial class MapPublishResult : IWireMessage
 {
     /// <summary>
     /// Key replaces the key the client sent: to force a key the server derives,
@@ -882,8 +996,9 @@ public sealed partial class MapPublishResult
     public long Score { get; set; }
 
     /// <summary>
-    /// KeyMode makes the publication conditional: "if_new" publishes only a key
-    /// which does not exist yet, "if_exists" only one which does.
+    /// KeyMode makes the publication conditional: if_new publishes only a key
+    /// which does not exist yet, if_exists only one which does.
+    /// One of: if_new, if_exists.
     /// </summary>
     [JsonPropertyName("key_mode")]
     public string? KeyMode { get; set; }
@@ -926,6 +1041,22 @@ public sealed partial class MapPublishResult
     /// </summary>
     [JsonPropertyName("version_epoch")]
     public string? VersionEpoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        string.IsNullOrEmpty(B64Data) &&
+        Tags is not { Count: > 0 } &&
+        Score == 0 &&
+        string.IsNullOrEmpty(KeyMode) &&
+        StreamData is null &&
+        string.IsNullOrEmpty(B64StreamData) &&
+        string.IsNullOrEmpty(IdempotencyKey) &&
+        !Delta &&
+        Version == 0 &&
+        string.IsNullOrEmpty(VersionEpoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -946,14 +1077,15 @@ public sealed partial class MapRemoveRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -995,7 +1127,7 @@ public sealed partial class MapRemoveRequest
 /// MapRemoveResult accepts the removal, even when empty. Fields left unset
 /// keep what the client sent, or the defaults.
 /// </summary>
-public sealed partial class MapRemoveResult
+public sealed partial class MapRemoveResult : IWireMessage
 {
     /// <summary>
     /// Key replaces the key the client sent.
@@ -1016,6 +1148,13 @@ public sealed partial class MapRemoveResult
     /// </summary>
     [JsonPropertyName("idempotency_key")]
     public string? IdempotencyKey { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Tags is not { Count: > 0 } &&
+        string.IsNullOrEmpty(IdempotencyKey);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1036,14 +1175,15 @@ public sealed partial class RpcRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -1091,7 +1231,7 @@ public sealed partial class RpcRequest
 /// <summary>
 /// RPCResult is the call's result.
 /// </summary>
-public sealed partial class RpcResult
+public sealed partial class RpcResult : IWireMessage
 {
     /// <summary>
     /// Data is the result sent to the client: any JSON.
@@ -1105,6 +1245,12 @@ public sealed partial class RpcResult
     /// </summary>
     [JsonPropertyName("b64data")]
     public string? B64Data { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Data is null &&
+        string.IsNullOrEmpty(B64Data);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1125,14 +1271,15 @@ public sealed partial class SubRefreshRequest
     public string Transport { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Protocol is the client protocol: "json" or "protobuf".
+    /// Protocol is the client protocol. One of: json, protobuf.
     /// </summary>
     [JsonPropertyName("protocol")]
     public string Protocol { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Encoding is "binary" when the proxy has binary_encoding enabled, so that
-    /// payloads come in the b64 fields, and "json" otherwise.
+    /// Encoding is binary when the proxy has binary_encoding enabled, so that
+    /// payloads come in the b64 fields, and json otherwise.
+    /// One of: json, binary.
     /// </summary>
     [JsonPropertyName("encoding")]
     public string Encoding { get; init => field = value ?? ""; } = "";
@@ -1167,7 +1314,7 @@ public sealed partial class SubRefreshRequest
 /// <summary>
 /// SubRefreshResult extends the subscription, or ends it.
 /// </summary>
-public sealed partial class SubRefreshResult
+public sealed partial class SubRefreshResult : IWireMessage
 {
     /// <summary>
     /// Expired ends the subscription: it has expired.
@@ -1201,6 +1348,15 @@ public sealed partial class SubRefreshResult
     /// </summary>
     [JsonPropertyName("server_tags_filter")]
     public FilterNode? ServerTagsFilter { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Expired &&
+        ExpireAt == 0 &&
+        Info is null &&
+        string.IsNullOrEmpty(B64Info) &&
+        WireMessage.IsZero(ServerTagsFilter);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1220,7 +1376,7 @@ public sealed partial class NotifyCacheEmptyRequest
 /// <summary>
 /// The NotifyCacheEmptyResult message of the Centrifugo proxy.
 /// </summary>
-public sealed partial class NotifyCacheEmptyResult
+public sealed partial class NotifyCacheEmptyResult : IWireMessage
 {
     /// <summary>
     /// Populated tells Centrifugo that the backend published into the channel,
@@ -1228,6 +1384,11 @@ public sealed partial class NotifyCacheEmptyResult
     /// </summary>
     [JsonPropertyName("populated")]
     public bool Populated { get; set; }
+
+    bool IWireMessage.IsZero =>
+        !Populated;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1261,9 +1422,9 @@ public sealed partial class ChannelEvent
     public string Channel { get; init => field = value ?? ""; } = "";
 
     /// <summary>
-    /// Type is "occupied" when the channel got its first subscriber, "vacated"
+    /// Type is occupied when the channel got its first subscriber, vacated
     /// when it lost its last one. More types may come; the field is a string,
-    /// not an enum, for JSON interoperability.
+    /// not an enum, for JSON interoperability. One of: occupied, vacated.
     /// </summary>
     [JsonPropertyName("type")]
     public string Type { get; init => field = value ?? ""; } = "";
@@ -1272,8 +1433,12 @@ public sealed partial class ChannelEvent
 /// <summary>
 /// The NotifyChannelStateResult message of the Centrifugo proxy.
 /// </summary>
-public sealed partial class NotifyChannelStateResult
+public sealed partial class NotifyChannelStateResult : IWireMessage
 {
+
+    bool IWireMessage.IsZero => true;
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
@@ -1318,7 +1483,7 @@ public sealed partial class SharedPollRefreshItem
 /// SharedPollRefreshResult carries the items' current data. An item left out
 /// is unchanged.
 /// </summary>
-public sealed partial class SharedPollRefreshResult
+public sealed partial class SharedPollRefreshResult : IWireMessage
 {
     /// <summary>
     /// Items are the items' current data.
@@ -1335,12 +1500,18 @@ public sealed partial class SharedPollRefreshResult
     /// </summary>
     [JsonPropertyName("epoch")]
     public string? Epoch { get; set; }
+
+    bool IWireMessage.IsZero =>
+        Items is not { Count: > 0 } &&
+        string.IsNullOrEmpty(Epoch);
+
+    string? IWireMessage.Missing() => null;
 }
 
 /// <summary>
 /// SharedPollRefreshResultItem is an item's current data.
 /// </summary>
-public sealed partial class SharedPollRefreshResultItem
+public sealed partial class SharedPollRefreshResultItem : IWireMessage
 {
     /// <summary>
     /// Key is the item's key.
@@ -1377,6 +1548,166 @@ public sealed partial class SharedPollRefreshResultItem
     [JsonPropertyName("prev_data")]
     [JsonConverter(typeof(PayloadConverter))]
     public object? PrevData { get; set; }
+
+    bool IWireMessage.IsZero =>
+        string.IsNullOrEmpty(Key) &&
+        Data is null &&
+        Version == 0 &&
+        !Removed &&
+        PrevData is null;
+
+    string? IWireMessage.Missing() => null;
+}
+
+/// <summary>
+/// The values of the op field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class FilterNodeOpValues
+{
+    /// <summary><c>and</c>.</summary>
+    public const string And = "and";
+
+    /// <summary><c>or</c>.</summary>
+    public const string Or = "or";
+
+    /// <summary><c>not</c>.</summary>
+    public const string Not = "not";
+}
+
+/// <summary>
+/// The values of the cmp field of FilterNode. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class CmpValues
+{
+    /// <summary><c>eq</c>.</summary>
+    public const string Eq = "eq";
+
+    /// <summary><c>neq</c>.</summary>
+    public const string Neq = "neq";
+
+    /// <summary><c>in</c>.</summary>
+    public const string In = "in";
+
+    /// <summary><c>nin</c>.</summary>
+    public const string Nin = "nin";
+
+    /// <summary><c>ex</c>.</summary>
+    public const string Ex = "ex";
+
+    /// <summary><c>nex</c>.</summary>
+    public const string Nex = "nex";
+
+    /// <summary><c>sw</c>.</summary>
+    public const string Sw = "sw";
+
+    /// <summary><c>ew</c>.</summary>
+    public const string Ew = "ew";
+
+    /// <summary><c>ct</c>.</summary>
+    public const string Ct = "ct";
+
+    /// <summary><c>gt</c>.</summary>
+    public const string Gt = "gt";
+
+    /// <summary><c>gte</c>.</summary>
+    public const string Gte = "gte";
+
+    /// <summary><c>lt</c>.</summary>
+    public const string Lt = "lt";
+
+    /// <summary><c>lte</c>.</summary>
+    public const string Lte = "lte";
+}
+
+/// <summary>
+/// The values of the protocol field of ConnectRequest, RefreshRequest, SubscribeRequest,
+/// PublishRequest, MapPublishRequest, MapRemoveRequest, RpcRequest and SubRefreshRequest.
+/// The field is a string: a value Centrifugo sends or accepts which these do not name is
+/// still a valid one.
+/// </summary>
+public static class ProtocolValues
+{
+    /// <summary><c>json</c>.</summary>
+    public const string Json = "json";
+
+    /// <summary><c>protobuf</c>.</summary>
+    public const string Protobuf = "protobuf";
+}
+
+/// <summary>
+/// The values of the encoding field of ConnectRequest, RefreshRequest, SubscribeRequest,
+/// PublishRequest, MapPublishRequest, MapRemoveRequest, RpcRequest and SubRefreshRequest.
+/// The field is a string: a value Centrifugo sends or accepts which these do not name is
+/// still a valid one.
+/// </summary>
+public static class EncodingValues
+{
+    /// <summary><c>json</c>.</summary>
+    public const string Json = "json";
+
+    /// <summary><c>binary</c>.</summary>
+    public const string Binary = "binary";
+}
+
+/// <summary>
+/// The values of the allow field of ChannelsCapability and SubscribeResult. The field is a
+/// string: a value Centrifugo sends or accepts which these do not name is still a valid
+/// one.
+/// </summary>
+public static class AllowValues
+{
+    /// <summary><c>sub</c>.</summary>
+    public const string Sub = "sub";
+
+    /// <summary><c>pub</c>.</summary>
+    public const string Pub = "pub";
+
+    /// <summary><c>hst</c>.</summary>
+    public const string Hst = "hst";
+
+    /// <summary><c>prs</c>.</summary>
+    public const string Prs = "prs";
+}
+
+/// <summary>
+/// The values of the match field of ChannelsCapability. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class CapabilityMatchValues
+{
+    /// <summary><c>wildcard</c>.</summary>
+    public const string Wildcard = "wildcard";
+
+    /// <summary><c>regex</c>.</summary>
+    public const string Regex = "regex";
+}
+
+/// <summary>
+/// The values of the key_mode field of MapPublishResult. The field is a string: a value
+/// Centrifugo sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class KeyModeValues
+{
+    /// <summary><c>if_new</c>.</summary>
+    public const string IfNew = "if_new";
+
+    /// <summary><c>if_exists</c>.</summary>
+    public const string IfExists = "if_exists";
+}
+
+/// <summary>
+/// The values of the type field of ChannelEvent. The field is a string: a value Centrifugo
+/// sends or accepts which these do not name is still a valid one.
+/// </summary>
+public static class ChannelEventTypeValues
+{
+    /// <summary><c>occupied</c>.</summary>
+    public const string Occupied = "occupied";
+
+    /// <summary><c>vacated</c>.</summary>
+    public const string Vacated = "vacated";
 }
 
 [JsonSerializable(typeof(ConnectRequest))]

@@ -3,7 +3,7 @@
 csharpcent - the packages `Centrifugal.Cent` and `Centrifugal.Cent.AspNetCore` -
 is the .NET SDK for Centrifugo's HTTP server API, written to the [Centrifugo
 server SDK specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.2, whose reference implementation is gocent. Applications call it on
+version 0.3, whose reference implementation is gocent. Applications call it on
 their hot paths, from many requests at once, so it has to be correct under
 concurrency and hard to misuse. Read this before changing code.
 
@@ -11,14 +11,18 @@ concurrency and hard to misuse. Read this before changing code.
 
 | Path | What |
 |---|---|
-| `proto/api.proto`, `proto/proxy.proto` | Copies of Centrifugo's protos, from a released tag (v6.10.2) |
+| `proto/api.proto`, `proto/proxy.proto` | Copies of Centrifugo's protos, from Centrifugo's master (e21aeb50) until a release tag carries the "One of:" sentences: sync them from that tag before releasing |
 | `tools/Generator/` | The generator: `Proto.cs` parses the protos, `Emit.cs` writes the code |
+| `tools/Generator/constants_api.txt`, `constants_proxy.txt` | The constants' names spec 3.3 pins, by `Message.field` or `*.field` |
 | `tools/Generator/required_fields.txt` | The fields the protos mark "Required.", made `required` members - the reviewed list the other SDKs share. Generation fails when the protos' list differs |
 | `src/Centrifugal.Cent/Generated/` | Generated - never edited: request and result types, the client's, batches' and commands' methods, the JSON contexts, the proxy types and handlers |
 | `tests/Centrifugal.Cent.Tests/Generated/` | Generated - never edited: every method reaches its endpoint, batch command and consumer command |
+| `tests/Centrifugal.Cent.Tests/GeneratorTests.cs` | The generator's parser and emitter, compiled into the test project: the "One of:" parser, the constants' names, the presence wrappers and unchecked required fields the protos give |
 | `src/Centrifugal.Cent/CentClient.cs`, `ClientCore.cs` | The client, its options' validation, the request path, close |
 | `src/Centrifugal.Cent/Exceptions.cs` | The exceptions, `ErrorCodes`, `Retry` |
 | `src/Centrifugal.Cent/Broadcast.cs`, `Batch.cs`, `AutoBatcher.cs`, `Command.cs` | Broadcasts and their retries, batches, automatic batching, commands |
+| `src/Centrifugal.Cent/ApiMethod.cs` | Encoding a request: `IWireMessage`'s required-field checks, the `data` rules |
+| `src/Centrifugal.Cent/Pages.cs` | The `*AllAsync` iterators of the paged methods, the results' `Position` |
 | `src/Centrifugal.Cent/Json/` | The wire options and converters, payloads, `RawJson` |
 | `src/Centrifugal.Cent/Handlers/` | `CentHandler`, the framework-free HTTP handlers' core; proxy and endpoint handlers |
 | `src/Centrifugal.Cent/Tokens/`, `SharedPoll.cs` | Keys, tokens, JWKS, API tokens, shared poll signatures |
@@ -42,11 +46,15 @@ passes; if you find yourself about to break one, stop and say so instead.
    `CentApiException`, matched by code alone; an unknown code is still one. The
    transport error mode gives the same error as a 200 reply. A reply which is
    not a JSON object of the reply's shape is a `CentDecodeException`.
-4. **One deadline per call.** `RequestTimeout`, or `WithTimeout`'s, bounds the
-   whole call - the endpoint and token functions, the connection, the reply
-   read - through one `CancellationToken`, so a reply trickling in stops at the
-   deadline. Every timeout is a `CentTimeoutException`, an `HttpClient`'s own
-   included; a caller's cancellation is an `OperationCanceledException`.
+4. **One deadline per call.** `RequestTimeout`, or `WithTimeout`'s replacing it,
+   bounds every call - the endpoint and token functions, the connection, the
+   reply read - through one `CancellationToken`, so a reply trickling in stops
+   at the deadline. A caller's token only shortens it, never extends it. A
+   broadcast retry's `AttemptTimeout` replaces it per attempt, the token and a
+   `WithTimeout` view bounding the call as a whole; an automatic batch request
+   lasts until its calls' latest deadline, at least `RequestTimeout`. Every
+   timeout is a `CentTimeoutException`, an `HttpClient`'s own included; a
+   caller's cancellation is an `OperationCanceledException`.
 5. **A payload is carried exactly.** A reply's payloads are `JsonElement?`,
    which go back as the same JSON value, number text kept. JSON `null` is an
    element of kind `Null`; C# `null` is no payload.
@@ -85,12 +93,14 @@ rest of what CI runs.
 ## Updating to a new Centrifugo API
 
 1. Copy `api.proto` and `proxy.proto` from a released Centrifugo tag into
-   `proto/` - always a released tag.
+   `proto/` - always a released tag for a release.
 2. Read the diff of `proto/`: a removed field is a breaking change. Keep it as
    a deprecated field until the next breaking release (spec 16).
 3. If generation stops on `required_fields.txt`, review the change, then
    `dotnet run --project tools/Generator -- --accept-required`. A new proxy
-   method stops it too: decide which answers it takes in `Emit.cs`.
+   method stops it too: decide which answers it takes in `Emit.cs`; and so
+   does a malformed "One of:" sentence. A changed presence wrapper or
+   unchecked required field fails `GeneratorTests`: review it there.
 4. The checks, then the integration tests against the new release.
 5. Bump the Centrifugo image in `.github/workflows/ci.yml` and
    `testdata/centrifugo-pro.compose.yml`, and the versions table in the README
@@ -102,6 +112,32 @@ rest of what CI runs.
   the protos add is not a breaking change, and the compiler says when a field
   marked "Required." is missing (spec 3.3) - by name, so a reordering of the
   protos cannot swap two arguments.
+- **A `required` member is checked again before sending**: `required` makes a
+  call assign it, not give it a value, and `null`, `""` or `0` go out as the
+  field left unset - the SDK leaves zero values out. So each generated message
+  implements the internal `IWireMessage`, whose `Missing()` names the first
+  unset field marked "Required.", nested ones by path, and `ApiMethod.Encode`
+  refuses the request. A field whose empty value has a meaning is not checked
+  (spec 3.3); nothing else of Centrifugo's is copied (spec 3.5).
+- **A message whose fields are all zero is left out** (`IWireMessage.IsZero`),
+  as a zero field is: an empty `LimitStrategy` would otherwise go as `{}`,
+  which Centrifugo PRO reads as a strategy. A presence wrapper - `device_update`'s
+  updates, found from the protos' comments - is never zero: an empty one is
+  sent as `{}`, and clears.
+- **Constants are static classes named by the pinned name and `Values`**:
+  `OpValues.Add`, `EncodingValues.Binary`, `ChannelEventTypeValues.Occupied`.
+  The names are spec 3.3's table, held in `tools/Generator/constants_api.txt`
+  and `constants_proxy.txt`, never derived: the generator fails on a "One of:"
+  field the list lacks, a pin no field uses, and one name over different
+  values. `Values` keeps a class named `Encoding` from making
+  `System.Text.Encoding` ambiguous in every file importing the namespace. The
+  fields stay strings.
+- **The `*AllAsync` iterators are not virtual**: each page is a call of the
+  method's virtual `Async` form, so a mock of that answers both, as the short
+  forms do. A page's timeout - the `pageTimeout` overload's, or
+  `RequestTimeout`, never a `WithTimeout` view's (spec 3.8) - reaches that call
+  through an internal `AsyncLocal` read by `CallAsync` (`Paging` in
+  `Pages.cs`), set only for the page's own call.
 - **A request's payload is `object?`**, a reply's `JsonElement?`: the spec's C#
   row - native values in, the JSON type out. An application's object is encoded
   with `JsonSerializerDefaults.Web`, as ASP.NET Core and SignalR encode what

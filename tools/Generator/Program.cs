@@ -24,9 +24,9 @@ try
     var required = new SortedSet<string>(StringComparer.Ordinal);
     var files = new Dictionary<string, string>
     {
-        ["src/Centrifugal.Cent/Generated/Api.g.cs"] = ApiEmitter.Types(api, required),
+        ["src/Centrifugal.Cent/Generated/Api.g.cs"] = ApiEmitter.Types(api, required, Pins(root, "constants_api.txt")),
         ["src/Centrifugal.Cent/Generated/Methods.g.cs"] = ApiEmitter.Methods(api),
-        ["src/Centrifugal.Cent/Generated/Proxy.g.cs"] = ProxyEmitter.Generate(proxy),
+        ["src/Centrifugal.Cent/Generated/Proxy.g.cs"] = ProxyEmitter.Generate(proxy, Pins(root, "constants_proxy.txt")),
         ["tests/Centrifugal.Cent.Tests/Generated/MethodsTests.g.cs"] = ApiEmitter.Tests(api),
     };
     Reviewed.Check(Path.Combine(root, "tools", "Generator", "required_fields.txt"), required, acceptRequired);
@@ -62,6 +62,10 @@ catch (GeneratorException e)
     Console.Error.WriteLine(e.Message);
     return 1;
 }
+
+// The constant names spec 3.3 pins, for one proto.
+static Pins Pins(string root, string file) =>
+    new($"tools/Generator/{file}", File.ReadAllText(Path.Combine(root, "tools", "Generator", file)));
 
 static string FindRoot()
 {

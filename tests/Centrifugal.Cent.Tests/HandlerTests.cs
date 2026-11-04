@@ -93,6 +93,17 @@ public sealed class HandlerTests
     }
 
     [Fact]
+    public async Task AnEmptyResultIsSent()
+    {
+        // An empty result accepts the request as sent: it must reach
+        // Centrifugo, not be left out as an empty message of a request is.
+        var connect = new ProxyHandlers().Connect((_, _) => Task.FromResult(new ConnectResult()));
+        var r = await Post(connect, """{"client":"c","transport":"websocket","protocol":"json","encoding":"json"}""");
+        Assert.Equal(200, r.StatusCode);
+        Assert.Equal("""{"result":{}}""", Text(r));
+    }
+
+    [Fact]
     public async Task MalformedAndWrongRequestsAreRefused()
     {
         var errors = new List<Exception>();
@@ -138,7 +149,7 @@ public sealed class HandlerTests
         var endpoints = new EndpointHandlers();
         var h = endpoints.ConnectionToken(context => context.Headers.TryGetValue("Cookie", out _)
             ? Task.FromResult("token")
-            : throw new EndpointUnauthorizedException());
+            : throw new EndpointForbiddenException());
         var withCookie = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["cookie"] = "s=1" };
         foreach (var method in new[] { "GET", "POST" })
         {
@@ -160,7 +171,7 @@ public sealed class HandlerTests
         var endpoints = new EndpointHandlers(new EndpointHandlerOptions { OnError = (_, e) => errors.Add(e) });
         var h = endpoints.SubscriptionToken((channel, _) => channel switch
         {
-            "secret" => throw new InvalidOperationException("wrapped", new EndpointUnauthorizedException()),
+            "secret" => throw new InvalidOperationException("wrapped", new EndpointForbiddenException()),
             "broken" => throw new InvalidOperationException("db"),
             _ => Task.FromResult($"token-{channel}"),
         });

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.Extensions.Time.Testing;
@@ -77,13 +78,30 @@ public sealed class ClientTests
     public void ApiKeyWithANewlineIsRefused() =>
         Assert.Throws<CentInvalidConfigException>(() => new CentClient("http://localhost:8000/api", "key\n"));
 
-    [Fact]
-    public void NegativeTimeoutIsRefused() =>
+    // RequestTimeout cannot be turned off: a call is never unbounded.
+    [Theory]
+    [InlineData(-1.0)]
+    [InlineData(-0.001)]
+    [InlineData(25 * 24 * 3600.0)]
+    public void ANegativeOrUnboundedRequestTimeoutIsRefused(double seconds) =>
         Assert.Throws<CentInvalidConfigException>(() => new CentClient(new CentClientOptions
         {
             ApiEndpoint = "http://localhost:8000/api",
-            RequestTimeout = TimeSpan.FromSeconds(-1),
+            RequestTimeout = TimeSpan.FromSeconds(seconds),
         }));
+
+    [Fact]
+    public void AnInfiniteRequestTimeoutIsRefusedAndZeroIsTheDefault()
+    {
+        var e = Assert.Throws<CentInvalidConfigException>(() => new CentClient(new CentClientOptions
+        {
+            ApiEndpoint = "http://localhost:8000/api",
+            RequestTimeout = Timeout.InfiniteTimeSpan,
+        }));
+        Assert.Contains("RequestTimeout", e.Message, StringComparison.Ordinal);
+        using var zero = new CentClient(new CentClientOptions { ApiEndpoint = "http://localhost:8000/api", RequestTimeout = TimeSpan.Zero });
+        Assert.Equal(TimeSpan.FromSeconds(10), zero.Timeout);
+    }
 
     [Fact]
     public async Task RequestIsAPostOfJsonWithCredentials()
@@ -99,7 +117,7 @@ public sealed class ClientTests
         Assert.Equal("http://centrifugo.test/api/publish", r.Uri.ToString());
         Assert.Equal("key", r.Headers["X-API-Key"]);
         Assert.Equal("application/json", r.Headers["Content-Type"]);
-        Assert.Equal("csharpcent/0.1", r.Headers["User-Agent"]);
+        Assert.Equal("csharpcent/0.2", r.Headers["User-Agent"]);
         Assert.Equal("""{"channel":"news","data":{"text":"hi"}}""", r.Body);
     }
 
@@ -164,8 +182,45 @@ public sealed class ClientTests
         });
         await client.InfoAsync(new InfoRequest(), Ct);
         endpoint = "http://b.test/api/info";
-        await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        var e = await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Contains("ApiEndpointFunc", e.Message, StringComparison.Ordinal);
+        Assert.False(Retry.IsRetryable(e));
         Assert.Equal(["http://a.test/api/info"], fake.Requests.ConvertAll(r => r.Uri.ToString()));
+    }
+
+    // A function's own exception fails the call before sending, naming the function, the
+    // exception chained and judged by Retry as it is.
+    [Theory]
+    [InlineData("ApiEndpointFunc")]
+    [InlineData("BearerTokenFunc")]
+    public async Task AFunctionsOwnExceptionFailsTheCallNamingIt(string function)
+    {
+        Exception thrown = new HttpRequestException("discovery is down");
+        var fake = new FakeCentrifugo();
+        await using var client = fake.CreateClient(o =>
+        {
+            Func<CancellationToken, ValueTask<string>> fails = _ => throw thrown;
+            if (function == "ApiEndpointFunc")
+            {
+                o.ApiEndpoint = null;
+                o.ApiEndpointFunc = fails;
+            }
+            else
+            {
+                o.ApiKey = null;
+                o.BearerTokenFunc = fails;
+            }
+        });
+        var e = await Assert.ThrowsAsync<CentFunctionException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Equal(function, e.Function);
+        Assert.Equal($"{function}: discovery is down", e.Message);
+        Assert.Same(thrown, e.InnerException);
+        Assert.True(Retry.IsRetryable(e));
+
+        thrown = new InvalidOperationException("misconfigured");
+        e = await Assert.ThrowsAsync<CentFunctionException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.False(Retry.IsRetryable(e));
+        Assert.Empty(fake.Requests);
     }
 
     [Fact]
@@ -182,7 +237,9 @@ public sealed class ClientTests
         Assert.Equal("Bearer t1", fake.Requests[0].Headers["Authorization"]);
         Assert.False(fake.Requests[0].Headers.ContainsKey("X-API-Key"));
         token = "";
-        await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        var empty = await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
+        Assert.Contains("BearerTokenFunc", empty.Message, StringComparison.Ordinal);
+        Assert.False(Retry.IsRetryable(empty));
         token = "a\r\nb";
         await Assert.ThrowsAsync<CentInvalidConfigException>(() => client.InfoAsync(new InfoRequest(), Ct));
         Assert.Single(fake.Requests);
@@ -332,6 +389,62 @@ public sealed class ClientTests
         await Assert.ThrowsAsync<CentTimeoutException>(() => longer.PublishAsync(Publish(), Ct));
     }
 
+    public static TheoryData<bool> AloneAndAutoBatched => new() { false, true };
+
+    private static Action<CentClientOptions> Timeouts(bool autoBatch, TimeSpan requestTimeout) => o =>
+    {
+        o.RequestTimeout = requestTimeout;
+        if (autoBatch)
+        {
+            o.AutoBatch = new AutoBatchOptions { MaxInFlight = 1 };
+        }
+    };
+
+    // RequestTimeout bounds every call: a caller's token living longer does not extend it.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task ALongerTokenEndsAtRequestTimeout(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(_ => Answer.After(TimeSpan.FromSeconds(30), Answer.Ok("{}")));
+        await using var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromMilliseconds(100)));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        var started = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<CentTimeoutException>(() => client.PublishAsync(Publish(), cts.Token));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"{started.Elapsed}");
+    }
+
+    // A caller's token ending sooner shortens the call, as a cancellation.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task AShorterTokenEndsTheCallSooner(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(_ => Answer.After(TimeSpan.FromSeconds(30), Answer.Ok("{}")));
+        await using var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromSeconds(20)));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        var started = Stopwatch.StartNew();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.PublishAsync(Publish(), cts.Token));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(10), $"{started.Elapsed}");
+    }
+
+    // WithTimeout's timeout replaces RequestTimeout, longer or shorter.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task WithTimeoutReplacesRequestTimeoutLongerOrShorter(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(r => Answer.After(TimeSpan.FromMilliseconds(300), Answer.Ok(FakeCentrifugo.DefaultReply(r))));
+        await using (var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromMilliseconds(50))))
+        {
+            await Assert.ThrowsAsync<CentTimeoutException>(() => client.PublishAsync(Publish(), Ct));
+            await client.WithTimeout(TimeSpan.FromSeconds(10)).PublishAsync(Publish(), Ct);
+        }
+        await using (var client = fake.CreateClient(Timeouts(autoBatch, TimeSpan.FromSeconds(10))))
+        {
+            await Assert.ThrowsAsync<CentTimeoutException>(() => client.WithTimeout(TimeSpan.FromMilliseconds(50)).PublishAsync(Publish(), Ct));
+        }
+    }
+
     [Fact]
     public async Task AnHttpClientsOwnTimeoutIsATimeoutToo()
     {
@@ -355,7 +468,10 @@ public sealed class ClientTests
     {
         using var client = new CentClient("http://localhost:8000/api");
         Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.Zero));
-        Assert.Equal(Timeout.InfiniteTimeSpan, client.WithTimeout(Timeout.InfiniteTimeSpan).Timeout);
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.FromSeconds(-1)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(Timeout.InfiniteTimeSpan));
+        Assert.Throws<ArgumentOutOfRangeException>(() => client.WithTimeout(TimeSpan.FromDays(25)));
+        Assert.Equal(TimeSpan.FromDays(24), client.WithTimeout(TimeSpan.FromDays(24)).Timeout);
     }
 
     [Fact]

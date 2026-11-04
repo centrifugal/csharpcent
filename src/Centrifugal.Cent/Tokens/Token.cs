@@ -112,6 +112,12 @@ public sealed class ConnectionClaims
 
     /// <summary>Labels of the connection, for Centrifugo PRO's connection filters.</summary>
     public IReadOnlyDictionary<string, string>? Labels { get; init; }
+
+    /// <summary>
+    /// The dictionary compression profile of the connection: the <c>profile</c> claim, which
+    /// overrides the profile the client declared. Centrifugo PRO only.
+    /// </summary>
+    public string? Profile { get; init; }
 }
 
 /// <summary>The options of a server-side subscription in <see cref="ConnectionClaims.Subs"/>.</summary>
@@ -145,10 +151,16 @@ public sealed class ChannelsCapability
     /// <summary>The channels, or channel patterns, it applies to.</summary>
     public IReadOnlyList<string> Channels { get; init; } = [];
 
-    /// <summary>The operations it grants: <c>sub</c> (subscribe), <c>pub</c> (publish), <c>hst</c> (history), <c>prs</c> (presence).</summary>
+    /// <summary>
+    /// The operations it grants: <c>sub</c> (subscribe), <c>pub</c> (publish), <c>hst</c>
+    /// (history), <c>prs</c> (presence) - <see cref="Proxy.AllowValues"/>.
+    /// </summary>
     public IReadOnlyList<string> Allow { get; init; } = [];
 
-    /// <summary>How <see cref="Channels"/> are matched: null for exact names, <c>wildcard</c> or <c>regex</c>.</summary>
+    /// <summary>
+    /// How <see cref="Channels"/> are matched: null for exact names, <c>wildcard</c> or
+    /// <c>regex</c> - <see cref="Proxy.CapabilityMatchValues"/>.
+    /// </summary>
     public string? Match { get; init; }
 }
 
@@ -158,7 +170,10 @@ public sealed class ChannelsCapability
 /// </summary>
 public sealed class SubscriptionClaims
 {
-    /// <summary>The ID of the user the connection belongs to: the <c>sub</c> claim. Empty for an anonymous connection.</summary>
+    /// <summary>
+    /// The ID of the user the connection belongs to - the connection's user, not one of the
+    /// subscription's own: the <c>sub</c> claim. Empty for an anonymous connection.
+    /// </summary>
     public string User { get; init; } = "";
 
     /// <summary>The channel: required.</summary>
@@ -197,7 +212,7 @@ public sealed class SubscriptionClaims
     /// <summary>Overrides channel options of the namespace for this subscription.</summary>
     public SubscribeOptionOverride? Override { get; init; }
 
-    /// <summary>Operations allowed in the channel besides subscribing: <c>pub</c>, <c>hst</c>, <c>prs</c>. Centrifugo PRO only.</summary>
+    /// <summary>Operations allowed in the channel besides subscribing: <c>pub</c>, <c>hst</c>, <c>prs</c> - <see cref="Proxy.AllowValues"/>. Centrifugo PRO only.</summary>
     public IReadOnlyList<string>? Allow { get; init; }
 
     /// <summary>Makes the subscription receive only publications whose tags match it. Centrifugo PRO only.</summary>
@@ -279,6 +294,7 @@ public static class Token
                 }
                 w.WriteEndObject();
             }
+            String(w, "profile", claims.Profile);
         });
     }
 
@@ -428,7 +444,7 @@ public static class Token
     private static void Message<T>(Utf8JsonWriter w, string name, T? value)
         where T : class
     {
-        if (value is not null)
+        if (value is not null and not IWireMessage { IsZero: true })
         {
             w.WritePropertyName(name);
             JsonSerializer.Serialize(w, value, Wire.Info<T>());

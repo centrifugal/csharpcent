@@ -61,44 +61,44 @@ public sealed class GeneratedMethodsTests
         var fake = new FakeCentrifugo();
         await using var client = fake.CreateClient();
         var ct = TestContext.Current.CancellationToken;
-        await client.PublishAsync(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}") }, ct);
-        await client.BroadcastAsync(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}") }, ct);
-        await client.SubscribeAsync(new SubscribeRequest { Channel = "x" }, ct);
-        await client.UnsubscribeAsync(new UnsubscribeRequest { Channel = "x" }, ct);
-        await client.DisconnectAsync(new DisconnectRequest(), ct);
+        await client.PublishAsync(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }, ct);
+        await client.BroadcastAsync(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }, ct);
+        await client.SubscribeAsync(new SubscribeRequest { Channel = "x", User = "x", ExpireAt = 1, Info = RawJson.Parse("{}"), B64Info = "x", Client = "x", Data = RawJson.Parse("{}"), B64Data = "x", RecoverSince = new StreamPosition { Offset = 1, Epoch = "x" }, Override = new SubscribeOptionOverride { Presence = true, JoinLeave = true, ForceRecovery = true, ForcePositioning = true, ForcePushJoinLeave = true }, Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }, ct);
+        await client.UnsubscribeAsync(new UnsubscribeRequest { Channel = "x", User = "x", Client = "x", Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }, ct);
+        await client.DisconnectAsync(new DisconnectRequest { User = "x", Disconnect = new Disconnect { Code = 1, Reason = "x" }, Client = "x", Whitelist = ["x"], Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }, ct);
         await client.PresenceAsync(new PresenceRequest { Channel = "x" }, ct);
         await client.PresenceStatsAsync(new PresenceStatsRequest { Channel = "x" }, ct);
-        await client.HistoryAsync(new HistoryRequest { Channel = "x" }, ct);
+        await client.HistoryAsync(new HistoryRequest { Channel = "x", Limit = 1, Since = new StreamPosition { Offset = 1, Epoch = "x" }, Reverse = true }, ct);
         await client.HistoryRemoveAsync(new HistoryRemoveRequest { Channel = "x" }, ct);
         await client.InfoAsync(new InfoRequest(), ct);
-        await client.RefreshAsync(new RefreshRequest(), ct);
-        await client.ChannelsAsync(new ChannelsRequest(), ct);
-        await client.ConnectionsAsync(new ConnectionsRequest(), ct);
-        await client.UpdateUserStatusAsync(new UpdateUserStatusRequest { Users = ["x"] }, ct);
+        await client.RefreshAsync(new RefreshRequest { User = "x", Client = "x", Expired = true, ExpireAt = 1, Info = RawJson.Parse("{}"), Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }, ct);
+        await client.ChannelsAsync(new ChannelsRequest { Pattern = "x" }, ct);
+        await client.ConnectionsAsync(new ConnectionsRequest { User = "x", Expression = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] } }, ct);
+        await client.UpdateUserStatusAsync(new UpdateUserStatusRequest { Users = ["x"], State = "x" }, ct);
         await client.GetUserStatusAsync(new GetUserStatusRequest { Users = ["x"] }, ct);
         await client.DeleteUserStatusAsync(new DeleteUserStatusRequest { Users = ["x"] }, ct);
-        await client.BlockUserAsync(new BlockUserRequest { User = "x" }, ct);
+        await client.BlockUserAsync(new BlockUserRequest { ExpireAt = 1, User = "x" }, ct);
         await client.UnblockUserAsync(new UnblockUserRequest { User = "x" }, ct);
-        await client.RevokeTokenAsync(new RevokeTokenRequest { Uid = "x" }, ct);
-        await client.InvalidateUserTokensAsync(new InvalidateUserTokensRequest { User = "x" }, ct);
-        await client.DeviceRegisterAsync(new DeviceRegisterRequest { Provider = "x", Token = "x", Platform = "x" }, ct);
-        await client.DeviceUpdateAsync(new DeviceUpdateRequest(), ct);
-        await client.DeviceRemoveAsync(new DeviceRemoveRequest(), ct);
-        await client.DeviceListAsync(new DeviceListRequest(), ct);
-        await client.DeviceTopicListAsync(new DeviceTopicListRequest(), ct);
-        await client.DeviceTopicUpdateAsync(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x" }, ct);
-        await client.UserTopicListAsync(new UserTopicListRequest(), ct);
-        await client.UserTopicUpdateAsync(new UserTopicUpdateRequest { User = "x", Op = "x" }, ct);
-        await client.SendPushNotificationAsync(new SendPushNotificationRequest { Recipient = new PushRecipient(), Notification = new PushNotification() }, ct);
-        await client.UpdatePushStatusAsync(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x" }, ct);
+        await client.RevokeTokenAsync(new RevokeTokenRequest { ExpireAt = 1, Uid = "x" }, ct);
+        await client.InvalidateUserTokensAsync(new InvalidateUserTokensRequest { ExpireAt = 1, User = "x", IssuedBefore = 1, Channel = "x" }, ct);
+        await client.DeviceRegisterAsync(new DeviceRegisterRequest { Id = "x", Provider = "x", Token = "x", Platform = "x", User = "x", Meta = new Dictionary<string, string> { ["x"] = "x" }, Topics = ["x"], Timezone = "x", Locale = "x" }, ct);
+        await client.DeviceUpdateAsync(new DeviceUpdateRequest { Ids = ["x"], Users = ["x"], UserUpdate = new DeviceUserUpdate { User = "x" }, MetaUpdate = new DeviceMetaUpdate { Meta = new Dictionary<string, string> { ["x"] = "x" } }, TopicsUpdate = new DeviceTopicsUpdate { Op = "x", Topics = ["x"] }, TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "x" }, LocaleUpdate = new DeviceLocaleUpdate { Locale = "x" } }, ct);
+        await client.DeviceRemoveAsync(new DeviceRemoveRequest { Ids = ["x"], Users = ["x"] }, ct);
+        await client.DeviceListAsync(new DeviceListRequest { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, IncludeTotalCount = true, IncludeMeta = true, IncludeTopics = true, IncludeWebpushKeys = true, Cursor = "x", Limit = 1 }, ct);
+        await client.DeviceTopicListAsync(new DeviceTopicListRequest { Filter = new DeviceTopicFilter { DeviceIds = ["x"], DeviceProviders = ["x"], DevicePlatforms = ["x"], DeviceUsers = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, IncludeDevice = true, Cursor = "x", Limit = 1 }, ct);
+        await client.DeviceTopicUpdateAsync(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x", Topics = ["x"], User = "x" }, ct);
+        await client.UserTopicListAsync(new UserTopicListRequest { Filter = new UserTopicFilter { Users = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, Cursor = "x", Limit = 1 }, ct);
+        await client.UserTopicUpdateAsync(new UserTopicUpdateRequest { User = "x", Op = "x", Topics = ["x"] }, ct);
+        await client.SendPushNotificationAsync(new SendPushNotificationRequest { Recipient = new PushRecipient { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, FcmTokens = ["x"], FcmTopic = "x", FcmCondition = "x", HmsTokens = ["x"], HmsTopic = "x", HmsCondition = "x", ApnsTokens = ["x"], WebpushTokens = ["x"] }, Notification = new PushNotification { Fcm = new FcmPushNotification { Message = RawJson.Parse("{}") }, Hms = new HmsPushNotification { Message = RawJson.Parse("{}") }, Apns = new ApnsPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, Webpush = new WebPushPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, ExpireAt = 1 }, Uid = "x", SendAt = 1, OptimizeForReliability = true, LimitStrategy = new PushLimitStrategy { RateLimit = new PushRateLimitStrategy { Key = "x", Policies = [new RateLimitPolicy { Rate = 1, IntervalMs = 1 }], DropIfRateLimited = true }, TimeLimit = new PushTimeLimitStrategy { SendAfterTime = "x", SendBeforeTime = "x", NoTzSendNow = true } }, AnalyticsUid = "x", Localizations = new Dictionary<string, PushLocalization> { ["x"] = new PushLocalization { Translations = new Dictionary<string, string> { ["x"] = "x" } } }, UseTemplating = true, UseMeta = true }, ct);
+        await client.UpdatePushStatusAsync(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x", MsgId = "x" }, ct);
         await client.CancelPushAsync(new CancelPushRequest { Uid = "x" }, ct);
-        await client.MapPublishAsync(new MapPublishRequest { Channel = "x", Key = "x" }, ct);
-        await client.MapRemoveAsync(new MapRemoveRequest { Channel = "x", Key = "x" }, ct);
-        await client.MapReadStateAsync(new MapReadStateRequest { Channel = "x" }, ct);
-        await client.MapReadStreamAsync(new MapReadStreamRequest { Channel = "x" }, ct);
+        await client.MapPublishAsync(new MapPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", StreamData = RawJson.Parse("{}"), B64StreamData = "x", Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x", Score = 1, KeyMode = "x" }, ct);
+        await client.MapRemoveAsync(new MapRemoveRequest { Channel = "x", Key = "x", IdempotencyKey = "x" }, ct);
+        await client.MapReadStateAsync(new MapReadStateRequest { Channel = "x", Cursor = "x", Limit = 1, Key = "x", Asc = true, RevisionOffset = 1, RevisionEpoch = "x" }, ct);
+        await client.MapReadStreamAsync(new MapReadStreamRequest { Channel = "x", SinceOffset = 1, SinceEpoch = "x", Limit = 1, Reverse = true }, ct);
         await client.MapStatsAsync(new MapStatsRequest { Channel = "x" }, ct);
         await client.MapClearAsync(new MapClearRequest { Channel = "x" }, ct);
-        await client.SharedPollPublishAsync(new SharedPollPublishRequest { Channel = "x", Key = "x", Version = 1 }, ct);
+        await client.SharedPollPublishAsync(new SharedPollPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", Version = 1, Epoch = "x" }, ct);
         Assert.Equal(Methods, fake.Paths.ConvertAll(p => p["/api/".Length..]));
     }
 
@@ -110,44 +110,44 @@ public sealed class GeneratedMethodsTests
         var batch = client.NewBatch();
         var pending = new List<IPending>
         {
-            batch.Publish(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}") }),
-            batch.Broadcast(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}") }),
-            batch.Subscribe(new SubscribeRequest { Channel = "x" }),
-            batch.Unsubscribe(new UnsubscribeRequest { Channel = "x" }),
-            batch.Disconnect(new DisconnectRequest()),
+            batch.Publish(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }),
+            batch.Broadcast(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }),
+            batch.Subscribe(new SubscribeRequest { Channel = "x", User = "x", ExpireAt = 1, Info = RawJson.Parse("{}"), B64Info = "x", Client = "x", Data = RawJson.Parse("{}"), B64Data = "x", RecoverSince = new StreamPosition { Offset = 1, Epoch = "x" }, Override = new SubscribeOptionOverride { Presence = true, JoinLeave = true, ForceRecovery = true, ForcePositioning = true, ForcePushJoinLeave = true }, Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            batch.Unsubscribe(new UnsubscribeRequest { Channel = "x", User = "x", Client = "x", Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            batch.Disconnect(new DisconnectRequest { User = "x", Disconnect = new Disconnect { Code = 1, Reason = "x" }, Client = "x", Whitelist = ["x"], Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
             batch.Presence(new PresenceRequest { Channel = "x" }),
             batch.PresenceStats(new PresenceStatsRequest { Channel = "x" }),
-            batch.History(new HistoryRequest { Channel = "x" }),
+            batch.History(new HistoryRequest { Channel = "x", Limit = 1, Since = new StreamPosition { Offset = 1, Epoch = "x" }, Reverse = true }),
             batch.HistoryRemove(new HistoryRemoveRequest { Channel = "x" }),
             batch.Info(new InfoRequest()),
-            batch.Refresh(new RefreshRequest()),
-            batch.Channels(new ChannelsRequest()),
-            batch.Connections(new ConnectionsRequest()),
-            batch.UpdateUserStatus(new UpdateUserStatusRequest { Users = ["x"] }),
+            batch.Refresh(new RefreshRequest { User = "x", Client = "x", Expired = true, ExpireAt = 1, Info = RawJson.Parse("{}"), Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            batch.Channels(new ChannelsRequest { Pattern = "x" }),
+            batch.Connections(new ConnectionsRequest { User = "x", Expression = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] } }),
+            batch.UpdateUserStatus(new UpdateUserStatusRequest { Users = ["x"], State = "x" }),
             batch.GetUserStatus(new GetUserStatusRequest { Users = ["x"] }),
             batch.DeleteUserStatus(new DeleteUserStatusRequest { Users = ["x"] }),
-            batch.BlockUser(new BlockUserRequest { User = "x" }),
+            batch.BlockUser(new BlockUserRequest { ExpireAt = 1, User = "x" }),
             batch.UnblockUser(new UnblockUserRequest { User = "x" }),
-            batch.RevokeToken(new RevokeTokenRequest { Uid = "x" }),
-            batch.InvalidateUserTokens(new InvalidateUserTokensRequest { User = "x" }),
-            batch.DeviceRegister(new DeviceRegisterRequest { Provider = "x", Token = "x", Platform = "x" }),
-            batch.DeviceUpdate(new DeviceUpdateRequest()),
-            batch.DeviceRemove(new DeviceRemoveRequest()),
-            batch.DeviceList(new DeviceListRequest()),
-            batch.DeviceTopicList(new DeviceTopicListRequest()),
-            batch.DeviceTopicUpdate(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x" }),
-            batch.UserTopicList(new UserTopicListRequest()),
-            batch.UserTopicUpdate(new UserTopicUpdateRequest { User = "x", Op = "x" }),
-            batch.SendPushNotification(new SendPushNotificationRequest { Recipient = new PushRecipient(), Notification = new PushNotification() }),
-            batch.UpdatePushStatus(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x" }),
+            batch.RevokeToken(new RevokeTokenRequest { ExpireAt = 1, Uid = "x" }),
+            batch.InvalidateUserTokens(new InvalidateUserTokensRequest { ExpireAt = 1, User = "x", IssuedBefore = 1, Channel = "x" }),
+            batch.DeviceRegister(new DeviceRegisterRequest { Id = "x", Provider = "x", Token = "x", Platform = "x", User = "x", Meta = new Dictionary<string, string> { ["x"] = "x" }, Topics = ["x"], Timezone = "x", Locale = "x" }),
+            batch.DeviceUpdate(new DeviceUpdateRequest { Ids = ["x"], Users = ["x"], UserUpdate = new DeviceUserUpdate { User = "x" }, MetaUpdate = new DeviceMetaUpdate { Meta = new Dictionary<string, string> { ["x"] = "x" } }, TopicsUpdate = new DeviceTopicsUpdate { Op = "x", Topics = ["x"] }, TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "x" }, LocaleUpdate = new DeviceLocaleUpdate { Locale = "x" } }),
+            batch.DeviceRemove(new DeviceRemoveRequest { Ids = ["x"], Users = ["x"] }),
+            batch.DeviceList(new DeviceListRequest { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, IncludeTotalCount = true, IncludeMeta = true, IncludeTopics = true, IncludeWebpushKeys = true, Cursor = "x", Limit = 1 }),
+            batch.DeviceTopicList(new DeviceTopicListRequest { Filter = new DeviceTopicFilter { DeviceIds = ["x"], DeviceProviders = ["x"], DevicePlatforms = ["x"], DeviceUsers = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, IncludeDevice = true, Cursor = "x", Limit = 1 }),
+            batch.DeviceTopicUpdate(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x", Topics = ["x"], User = "x" }),
+            batch.UserTopicList(new UserTopicListRequest { Filter = new UserTopicFilter { Users = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, Cursor = "x", Limit = 1 }),
+            batch.UserTopicUpdate(new UserTopicUpdateRequest { User = "x", Op = "x", Topics = ["x"] }),
+            batch.SendPushNotification(new SendPushNotificationRequest { Recipient = new PushRecipient { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, FcmTokens = ["x"], FcmTopic = "x", FcmCondition = "x", HmsTokens = ["x"], HmsTopic = "x", HmsCondition = "x", ApnsTokens = ["x"], WebpushTokens = ["x"] }, Notification = new PushNotification { Fcm = new FcmPushNotification { Message = RawJson.Parse("{}") }, Hms = new HmsPushNotification { Message = RawJson.Parse("{}") }, Apns = new ApnsPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, Webpush = new WebPushPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, ExpireAt = 1 }, Uid = "x", SendAt = 1, OptimizeForReliability = true, LimitStrategy = new PushLimitStrategy { RateLimit = new PushRateLimitStrategy { Key = "x", Policies = [new RateLimitPolicy { Rate = 1, IntervalMs = 1 }], DropIfRateLimited = true }, TimeLimit = new PushTimeLimitStrategy { SendAfterTime = "x", SendBeforeTime = "x", NoTzSendNow = true } }, AnalyticsUid = "x", Localizations = new Dictionary<string, PushLocalization> { ["x"] = new PushLocalization { Translations = new Dictionary<string, string> { ["x"] = "x" } } }, UseTemplating = true, UseMeta = true }),
+            batch.UpdatePushStatus(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x", MsgId = "x" }),
             batch.CancelPush(new CancelPushRequest { Uid = "x" }),
-            batch.MapPublish(new MapPublishRequest { Channel = "x", Key = "x" }),
-            batch.MapRemove(new MapRemoveRequest { Channel = "x", Key = "x" }),
-            batch.MapReadState(new MapReadStateRequest { Channel = "x" }),
-            batch.MapReadStream(new MapReadStreamRequest { Channel = "x" }),
+            batch.MapPublish(new MapPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", StreamData = RawJson.Parse("{}"), B64StreamData = "x", Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x", Score = 1, KeyMode = "x" }),
+            batch.MapRemove(new MapRemoveRequest { Channel = "x", Key = "x", IdempotencyKey = "x" }),
+            batch.MapReadState(new MapReadStateRequest { Channel = "x", Cursor = "x", Limit = 1, Key = "x", Asc = true, RevisionOffset = 1, RevisionEpoch = "x" }),
+            batch.MapReadStream(new MapReadStreamRequest { Channel = "x", SinceOffset = 1, SinceEpoch = "x", Limit = 1, Reverse = true }),
             batch.MapStats(new MapStatsRequest { Channel = "x" }),
             batch.MapClear(new MapClearRequest { Channel = "x" }),
-            batch.SharedPollPublish(new SharedPollPublishRequest { Channel = "x", Key = "x", Version = 1 }),
+            batch.SharedPollPublish(new SharedPollPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", Version = 1, Epoch = "x" }),
         };
         await batch.SendAsync(TestContext.Current.CancellationToken);
         Assert.Equal(["/api/batch"], fake.Paths);
@@ -160,44 +160,44 @@ public sealed class GeneratedMethodsTests
     {
         var commands = new List<Command>
         {
-            Command.Publish(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}") }),
-            Command.Broadcast(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}") }),
-            Command.Subscribe(new SubscribeRequest { Channel = "x" }),
-            Command.Unsubscribe(new UnsubscribeRequest { Channel = "x" }),
-            Command.Disconnect(new DisconnectRequest()),
+            Command.Publish(new PublishRequest { Channel = "x", Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }),
+            Command.Broadcast(new BroadcastRequest { Channels = ["x"], Data = RawJson.Parse("{}"), B64Data = "x", SkipHistory = true, Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x" }),
+            Command.Subscribe(new SubscribeRequest { Channel = "x", User = "x", ExpireAt = 1, Info = RawJson.Parse("{}"), B64Info = "x", Client = "x", Data = RawJson.Parse("{}"), B64Data = "x", RecoverSince = new StreamPosition { Offset = 1, Epoch = "x" }, Override = new SubscribeOptionOverride { Presence = true, JoinLeave = true, ForceRecovery = true, ForcePositioning = true, ForcePushJoinLeave = true }, Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            Command.Unsubscribe(new UnsubscribeRequest { Channel = "x", User = "x", Client = "x", Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            Command.Disconnect(new DisconnectRequest { User = "x", Disconnect = new Disconnect { Code = 1, Reason = "x" }, Client = "x", Whitelist = ["x"], Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
             Command.Presence(new PresenceRequest { Channel = "x" }),
             Command.PresenceStats(new PresenceStatsRequest { Channel = "x" }),
-            Command.History(new HistoryRequest { Channel = "x" }),
+            Command.History(new HistoryRequest { Channel = "x", Limit = 1, Since = new StreamPosition { Offset = 1, Epoch = "x" }, Reverse = true }),
             Command.HistoryRemove(new HistoryRemoveRequest { Channel = "x" }),
             Command.Info(new InfoRequest()),
-            Command.Refresh(new RefreshRequest()),
-            Command.Channels(new ChannelsRequest()),
-            Command.Connections(new ConnectionsRequest()),
-            Command.UpdateUserStatus(new UpdateUserStatusRequest { Users = ["x"] }),
+            Command.Refresh(new RefreshRequest { User = "x", Client = "x", Expired = true, ExpireAt = 1, Info = RawJson.Parse("{}"), Session = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] }, AllUsers = true }),
+            Command.Channels(new ChannelsRequest { Pattern = "x" }),
+            Command.Connections(new ConnectionsRequest { User = "x", Expression = "x", LabelFilter = new FilterNode { Op = "x", Key = "x", Cmp = "x", Val = "x", Vals = ["x"] } }),
+            Command.UpdateUserStatus(new UpdateUserStatusRequest { Users = ["x"], State = "x" }),
             Command.GetUserStatus(new GetUserStatusRequest { Users = ["x"] }),
             Command.DeleteUserStatus(new DeleteUserStatusRequest { Users = ["x"] }),
-            Command.BlockUser(new BlockUserRequest { User = "x" }),
+            Command.BlockUser(new BlockUserRequest { ExpireAt = 1, User = "x" }),
             Command.UnblockUser(new UnblockUserRequest { User = "x" }),
-            Command.RevokeToken(new RevokeTokenRequest { Uid = "x" }),
-            Command.InvalidateUserTokens(new InvalidateUserTokensRequest { User = "x" }),
-            Command.DeviceRegister(new DeviceRegisterRequest { Provider = "x", Token = "x", Platform = "x" }),
-            Command.DeviceUpdate(new DeviceUpdateRequest()),
-            Command.DeviceRemove(new DeviceRemoveRequest()),
-            Command.DeviceList(new DeviceListRequest()),
-            Command.DeviceTopicList(new DeviceTopicListRequest()),
-            Command.DeviceTopicUpdate(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x" }),
-            Command.UserTopicList(new UserTopicListRequest()),
-            Command.UserTopicUpdate(new UserTopicUpdateRequest { User = "x", Op = "x" }),
-            Command.SendPushNotification(new SendPushNotificationRequest { Recipient = new PushRecipient(), Notification = new PushNotification() }),
-            Command.UpdatePushStatus(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x" }),
+            Command.RevokeToken(new RevokeTokenRequest { ExpireAt = 1, Uid = "x" }),
+            Command.InvalidateUserTokens(new InvalidateUserTokensRequest { ExpireAt = 1, User = "x", IssuedBefore = 1, Channel = "x" }),
+            Command.DeviceRegister(new DeviceRegisterRequest { Id = "x", Provider = "x", Token = "x", Platform = "x", User = "x", Meta = new Dictionary<string, string> { ["x"] = "x" }, Topics = ["x"], Timezone = "x", Locale = "x" }),
+            Command.DeviceUpdate(new DeviceUpdateRequest { Ids = ["x"], Users = ["x"], UserUpdate = new DeviceUserUpdate { User = "x" }, MetaUpdate = new DeviceMetaUpdate { Meta = new Dictionary<string, string> { ["x"] = "x" } }, TopicsUpdate = new DeviceTopicsUpdate { Op = "x", Topics = ["x"] }, TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "x" }, LocaleUpdate = new DeviceLocaleUpdate { Locale = "x" } }),
+            Command.DeviceRemove(new DeviceRemoveRequest { Ids = ["x"], Users = ["x"] }),
+            Command.DeviceList(new DeviceListRequest { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, IncludeTotalCount = true, IncludeMeta = true, IncludeTopics = true, IncludeWebpushKeys = true, Cursor = "x", Limit = 1 }),
+            Command.DeviceTopicList(new DeviceTopicListRequest { Filter = new DeviceTopicFilter { DeviceIds = ["x"], DeviceProviders = ["x"], DevicePlatforms = ["x"], DeviceUsers = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, IncludeDevice = true, Cursor = "x", Limit = 1 }),
+            Command.DeviceTopicUpdate(new DeviceTopicUpdateRequest { DeviceId = "x", Op = "x", Topics = ["x"], User = "x" }),
+            Command.UserTopicList(new UserTopicListRequest { Filter = new UserTopicFilter { Users = ["x"], Topics = ["x"], TopicPrefix = "x" }, IncludeTotalCount = true, Cursor = "x", Limit = 1 }),
+            Command.UserTopicUpdate(new UserTopicUpdateRequest { User = "x", Op = "x", Topics = ["x"] }),
+            Command.SendPushNotification(new SendPushNotificationRequest { Recipient = new PushRecipient { Filter = new DeviceFilter { Ids = ["x"], Users = ["x"], Topics = ["x"], Providers = ["x"], Platforms = ["x"] }, FcmTokens = ["x"], FcmTopic = "x", FcmCondition = "x", HmsTokens = ["x"], HmsTopic = "x", HmsCondition = "x", ApnsTokens = ["x"], WebpushTokens = ["x"] }, Notification = new PushNotification { Fcm = new FcmPushNotification { Message = RawJson.Parse("{}") }, Hms = new HmsPushNotification { Message = RawJson.Parse("{}") }, Apns = new ApnsPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, Webpush = new WebPushPushNotification { Headers = new Dictionary<string, string> { ["x"] = "x" }, Payload = RawJson.Parse("{}") }, ExpireAt = 1 }, Uid = "x", SendAt = 1, OptimizeForReliability = true, LimitStrategy = new PushLimitStrategy { RateLimit = new PushRateLimitStrategy { Key = "x", Policies = [new RateLimitPolicy { Rate = 1, IntervalMs = 1 }], DropIfRateLimited = true }, TimeLimit = new PushTimeLimitStrategy { SendAfterTime = "x", SendBeforeTime = "x", NoTzSendNow = true } }, AnalyticsUid = "x", Localizations = new Dictionary<string, PushLocalization> { ["x"] = new PushLocalization { Translations = new Dictionary<string, string> { ["x"] = "x" } } }, UseTemplating = true, UseMeta = true }),
+            Command.UpdatePushStatus(new UpdatePushStatusRequest { AnalyticsUid = "x", Status = "x", DeviceId = "x", MsgId = "x" }),
             Command.CancelPush(new CancelPushRequest { Uid = "x" }),
-            Command.MapPublish(new MapPublishRequest { Channel = "x", Key = "x" }),
-            Command.MapRemove(new MapRemoveRequest { Channel = "x", Key = "x" }),
-            Command.MapReadState(new MapReadStateRequest { Channel = "x" }),
-            Command.MapReadStream(new MapReadStreamRequest { Channel = "x" }),
+            Command.MapPublish(new MapPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", StreamData = RawJson.Parse("{}"), B64StreamData = "x", Tags = new Dictionary<string, string> { ["x"] = "x" }, IdempotencyKey = "x", Delta = true, Version = 1, VersionEpoch = "x", Score = 1, KeyMode = "x" }),
+            Command.MapRemove(new MapRemoveRequest { Channel = "x", Key = "x", IdempotencyKey = "x" }),
+            Command.MapReadState(new MapReadStateRequest { Channel = "x", Cursor = "x", Limit = 1, Key = "x", Asc = true, RevisionOffset = 1, RevisionEpoch = "x" }),
+            Command.MapReadStream(new MapReadStreamRequest { Channel = "x", SinceOffset = 1, SinceEpoch = "x", Limit = 1, Reverse = true }),
             Command.MapStats(new MapStatsRequest { Channel = "x" }),
             Command.MapClear(new MapClearRequest { Channel = "x" }),
-            Command.SharedPollPublish(new SharedPollPublishRequest { Channel = "x", Key = "x", Version = 1 }),
+            Command.SharedPollPublish(new SharedPollPublishRequest { Channel = "x", Key = "x", Data = RawJson.Parse("{}"), B64Data = "x", Version = 1, Epoch = "x" }),
         };
         Assert.Equal(Methods, commands.ConvertAll(c => c.Method));
     }

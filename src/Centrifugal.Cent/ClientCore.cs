@@ -13,7 +13,7 @@ namespace Centrifugal.Cent;
 internal sealed class ClientCore : IDisposable
 {
     /// <summary>The <c>User-Agent</c>: the SDK and its version - the minor one too before 1.0.</summary>
-    public const string UserAgent = "csharpcent/0.1";
+    public const string UserAgent = "csharpcent/0.2";
 
     private const int ErrorBodyRead = 4096;
     private const int ErrorBodyKept = 512;
@@ -62,9 +62,11 @@ internal sealed class ClientCore : IDisposable
             _apiKey = options.ApiKey.Length > 0 ? options.ApiKey : null;
         }
         _bearerTokenFunc = options.BearerTokenFunc;
-        if (options.RequestTimeout < TimeSpan.Zero && options.RequestTimeout != Timeout.InfiniteTimeSpan)
+        // Zero is the default, as the option's initial value is: the two cannot be told apart
+        // through configuration. A call is never unbounded (spec 3.1).
+        if (options.RequestTimeout != TimeSpan.Zero && !Deadline.IsValid(options.RequestTimeout))
         {
-            throw new CentInvalidConfigException("RequestTimeout is negative: give a positive TimeSpan, or Timeout.InfiniteTimeSpan for none");
+            throw new CentInvalidConfigException($"RequestTimeout is {options.RequestTimeout}: give a positive TimeSpan of at most 24 days - a call cannot be left unbounded; raise it to let calls take longer");
         }
         RequestTimeout = options.RequestTimeout == TimeSpan.Zero ? TimeSpan.FromSeconds(10) : options.RequestTimeout;
         foreach (var (name, value) in options.Headers ?? new Dictionary<string, string>())
@@ -234,7 +236,7 @@ internal sealed class ClientCore : IDisposable
         var token = linked.Token;
         try
         {
-            var endpoint = _endpoint ?? ValidateEndpoint(await _endpointFunc!(token).ConfigureAwait(false), "ApiEndpointFunc");
+            var endpoint = _endpoint ?? ValidateEndpoint(await CallFunction(_endpointFunc!, "ApiEndpointFunc", token).ConfigureAwait(false), "ApiEndpointFunc");
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint + "/" + method)
             {
                 Content = new ReadOnlyMemoryContent(body) { Headers = { ContentType = Json } },
@@ -246,7 +248,7 @@ internal sealed class ClientCore : IDisposable
             }
             if (_bearerTokenFunc is not null)
             {
-                var bearer = await _bearerTokenFunc(token).ConfigureAwait(false);
+                var bearer = await CallFunction(_bearerTokenFunc, "BearerTokenFunc", token).ConfigureAwait(false);
                 if (string.IsNullOrEmpty(bearer) || HasControl(bearer))
                 {
                     throw new CentInvalidConfigException(
@@ -307,6 +309,23 @@ internal sealed class ClientCore : IDisposable
         return outcome.Error is null ? outcome.Value : throw outcome.Error;
     }
 
+    /// <summary>
+    /// Calls an endpoint or bearer token function of the application's: an exception of its
+    /// own fails the call as a <see cref="CentFunctionException"/> naming it; the call's
+    /// deadline or cancellation ending it stays the call's.
+    /// </summary>
+    private static async ValueTask<string> CallFunction(Func<CancellationToken, ValueTask<string>> function, string name, CancellationToken token)
+    {
+        try
+        {
+            return await function(token).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            throw new CentFunctionException(name, e);
+        }
+    }
+
     /// <summary>The SDK's error for an exception of the HTTP stack or of the application's functions.</summary>
     private static Exception Map(string method, Exception e, CancellationTokenSource timeout, Deadline deadline, CancellationToken caller)
     {
@@ -360,7 +379,7 @@ internal sealed class ClientCore : IDisposable
             return status switch
             {
                 401 => new CentUnauthorizedException(kept, headers),
-                >= 300 and < 400 => new CentHttpException(status, kept, headers, "Centrifugo's API never redirects: check http or https in the endpoint"),
+                >= 300 and < 400 => new CentHttpException(status, kept, headers, "a redirect, which the SDK does not follow: check http or https and the path of the endpoint - Centrifugo's API never redirects a call, but its router redirects a path not in canonical form, one with a doubled slash say"),
                 404 when proOnly => new CentHttpException(status, kept, headers, $"{method} is Centrifugo PRO only: the server is likely Centrifugo OSS"),
                 404 => new CentHttpException(status, kept, headers, "is the endpoint the API's base URL, such as http://localhost:8000/api?"),
                 _ => new CentHttpException(status, kept, headers),
@@ -501,6 +520,9 @@ internal readonly record struct Deadline(long Timestamp, TimeSpan Timeout)
 {
     /// <summary>Timeouts longer than this are no timeout: a timer cannot hold them.</summary>
     private static readonly TimeSpan Longest = TimeSpan.FromDays(24);
+
+    /// <summary>A timeout a call can have: positive, and at most 24 days, which a timer holds.</summary>
+    public static bool IsValid(TimeSpan timeout) => timeout > TimeSpan.Zero && timeout <= Longest;
 
     public bool IsInfinite => Timestamp == long.MaxValue;
 

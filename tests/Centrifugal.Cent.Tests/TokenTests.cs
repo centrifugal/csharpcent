@@ -91,10 +91,11 @@ public sealed class TokenTests
             Meta = RawJson.Parse("""{"plan":"pro"}"""),
             Caps = [new ChannelsCapability { Channels = ["news:*"], Allow = ["sub", "hst"], Match = "wildcard" }],
             Labels = new Dictionary<string, string> { ["z"] = "1", ["a"] = "2" },
+            Profile = "chat",
         });
         Assert.Equal("""{"alg":"HS256","typ":"JWT","kid":"k1"}""", Header(token).GetRawText());
         Assert.Equal(
-            """{"sub":"42","exp":1700003600,"iat":1700000000,"jti":"t1","aud":"app","iss":"me","expire_at":0,"info":{"name":"Alex"},"subs":{"a":{},"b":{"data":1.0,"override":{"presence":{"value":false}}}},"meta":{"plan":"pro"},"caps":[{"channels":["news:*"],"allow":["sub","hst"],"match":"wildcard"}],"labels":{"a":"2","z":"1"}}""",
+            """{"sub":"42","exp":1700003600,"iat":1700000000,"jti":"t1","aud":"app","iss":"me","expire_at":0,"info":{"name":"Alex"},"subs":{"a":{},"b":{"data":1.0,"override":{"presence":{"value":false}}}},"meta":{"plan":"pro"},"caps":[{"channels":["news:*"],"allow":["sub","hst"],"match":"wildcard"}],"labels":{"a":"2","z":"1"},"profile":"chat"}""",
             Claims(token).GetRawText());
 
         var sub = Token.Subscription(SigningKey.Hmac("s"), new SubscriptionClaims

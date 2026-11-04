@@ -53,11 +53,7 @@ Agreement](https://centrifugal.dev/license).
 
 ## Commits and pull requests
 
-- PRs are squash-merged. **The PR title becomes the commit message**, and it must follow [Conventional Commits](https://www.conventionalcommits.org) (checked in CI):
-  - `feat: ...` → minor version bump before 1.0 (and a changelog "Added" entry)
-  - `fix: ...` → patch bump ("Fixed")
-  - `feat!: ...` or a `BREAKING CHANGE:` footer → breaking bump
-  - `perf`, `refactor`, `docs`, `revert` → changelog entries; `test`, `ci`, `build`, `chore` → no entry
+- PRs are squash-merged: **the PR title becomes the commit message**, so it says what the change does.
 - Each bug fix comes with a test that fails without the fix.
 
 ## Releases
@@ -78,5 +74,5 @@ After the first release, set `<PackageValidationBaselineVersion>` in both projec
 1. **NuGet Trusted Publishing.** On [nuget.org](https://www.nuget.org), signed in as `FZambia` (the `user` in `release.yml`), open Trusted Publishing and add a GitHub Actions policy: owner `centrifugal`, repository `csharpcent`, workflow file `release.yml`, environment `release`. The workflow then exchanges its OIDC token for a one-hour key at each release; no API key is stored. Packages the policy's owner creates are covered too, so the first release needs nothing more.
 2. **GitHub environment.** Create an environment named `release` (Settings → Environments); it needs no secrets. Under deployment branches and tags, allow only tags matching `v*`. Optionally add required reviewers: they approve each release.
 3. **Tag protection.** Add a tag ruleset for `v*` (Settings → Rules → Rulesets) that only maintainers can bypass, so only they can create, move or delete release tags.
-4. **Branch protection on `main`.** Require the `CI success` and `Conventional commit title` checks. Allow squash merges only.
+4. **Branch protection on `main`.** Require the `CI success` check. Allow squash merges only.
 5. **Prefix reservation** (optional). Ask NuGet to reserve the `Centrifugal.` prefix for the account (account@nuget.org): its packages then show as verified, and nobody else can publish under it.

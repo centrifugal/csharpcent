@@ -32,7 +32,7 @@ var endpoints = new EndpointHandlers();
 app.MapCentrifugo("/centrifugo/connection_token", endpoints.ConnectionToken(context =>
 {
     var user = context.Request.GetHttpContext().Request.Cookies["user"]
-        ?? throw new EndpointUnauthorizedException();
+        ?? throw new EndpointForbiddenException();
     return Task.FromResult(Token.Connection(key, new ConnectionClaims
     {
         User = user,

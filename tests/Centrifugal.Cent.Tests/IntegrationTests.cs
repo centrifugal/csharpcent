@@ -163,6 +163,48 @@ public sealed class IntegrationTests
         Assert.Empty((await c.HistoryAsync(new HistoryRequest { Channel = ch, Limit = 10 }, Ct)).Publications);
     }
 
+    // What came after a publication, page by page, from its position.
+    [Fact]
+    public async Task ReadsHistoryPageByPageFromAPosition()
+    {
+        await using var c = await Client();
+        var ch = Unique();
+        var first = await c.PublishAsync(ch, new { n = 0 }, Ct);
+        for (var i = 1; i <= 5; i++)
+        {
+            await c.PublishAsync(ch, new { n = i }, Ct);
+        }
+        var after = new List<int>();
+        await foreach (var p in c.HistoryAllAsync(new HistoryRequest { Channel = ch, Limit = 2, Since = first.Position }, Ct))
+        {
+            after.Add(p.Publication.Data!.Value.GetProperty("n").GetInt32());
+        }
+        Assert.Equal([1, 2, 3, 4, 5], after);
+        // An item's position is where to read on from.
+        HistoryItem? third = null;
+        await foreach (var p in c.HistoryAllAsync(new HistoryRequest { Channel = ch, Limit = 2, Since = first.Position }, Ct))
+        {
+            if (p.Publication.Data!.Value.GetProperty("n").GetInt32() == 3)
+            {
+                third = p;
+                break;
+            }
+        }
+        var rest = await c.HistoryAsync(new HistoryRequest { Channel = ch, Limit = 10, Since = third!.Position }, Ct);
+        Assert.Equal([4, 5], rest.Publications.Select(p => p.Data!.Value.GetProperty("n").GetInt32()));
+        var history = await c.HistoryAsync(new HistoryRequest { Channel = ch }, Ct);
+        Assert.Equal((6UL, first.Epoch), (history.Position.Offset, history.Position.Epoch));
+
+        // A position whose epoch is not the stream's cannot be read from.
+        var e = await Assert.ThrowsAsync<CentApiException>(async () =>
+        {
+            await foreach (var _ in c.HistoryAllAsync(new HistoryRequest { Channel = ch, Limit = 2, Since = new StreamPosition { Offset = 1, Epoch = "gone" } }, Ct))
+            {
+            }
+        });
+        Assert.Equal(ErrorCodes.UnrecoverablePosition, e.Code);
+    }
+
     [Fact]
     public async Task PublishesOncePerIdempotencyKey()
     {
@@ -253,13 +295,58 @@ public sealed class IntegrationTests
         var ch = "map:" + Unique();
         await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = "k1", Data = new { v = 1 } }, Ct);
         await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = "k2", Data = new { v = 2 } }, Ct);
+        await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = "k3", Data = new { v = 3 }, KeyMode = KeyModeValues.IfNew }, Ct);
         var state = await c.MapReadStateAsync(new MapReadStateRequest { Channel = ch, Limit = 10 }, Ct);
-        Assert.Equal(["k1", "k2"], state.Entries.Select(e => e.Key).Order());
-        await c.MapReadStreamAsync(new MapReadStreamRequest { Channel = ch, Limit = 10 }, Ct);
+        Assert.Equal(["k1", "k2", "k3"], state.Entries.Select(e => e.Key).Order());
+        var keys = new List<string>();
+        await foreach (var entry in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 1 }, Ct))
+        {
+            keys.Add(entry.Entry.Key);
+        }
+        Assert.Equal(["k1", "k2", "k3"], keys.Order());
+        var stream = await c.MapReadStreamAsync(new MapReadStreamRequest { Channel = ch, Limit = 10 }, Ct);
+        Assert.Equal(state.Position.Epoch, stream.Position.Epoch);
         await c.MapRemoveAsync(new MapRemoveRequest { Channel = ch, Key = "k1" }, Ct);
-        Assert.Equal(1, (await c.MapStatsAsync(new MapStatsRequest { Channel = ch }, Ct)).NumKeys);
+        Assert.Equal(2, (await c.MapStatsAsync(new MapStatsRequest { Channel = ch }, Ct)).NumKeys);
         await c.MapClearAsync(new MapClearRequest { Channel = ch }, Ct);
         await c.SharedPollPublishAsync(new SharedPollPublishRequest { Channel = "poll:" + Unique(), Key = "k", Version = 1, Data = new { v = 1 } }, Ct);
+    }
+
+    // A map state read page by page: every page after the first carries the first one's
+    // revision, which Centrifugo accepts with a cursor; a revision from another epoch fails.
+    [Fact]
+    public async Task ReadsMapStatePageByPage()
+    {
+        await using var c = await Client();
+        var ch = "map:" + Unique();
+        var want = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            want.Add($"k{i}");
+            await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = $"k{i}", Data = RawJson.Parse("{}") }, Ct);
+        }
+        var got = new List<string>();
+        await foreach (var e in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2 }, Ct))
+        {
+            got.Add(e.Entry.Key);
+        }
+        Assert.Equal(want, got.Order());
+        // The changes after the state, from the position every item carries.
+        MapStateItem? any = null;
+        await foreach (var e in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2 }, Ct))
+        {
+            any = e;
+        }
+        await c.MapPublishAsync(new MapPublishRequest { Channel = ch, Key = "k9", Data = RawJson.Parse("{}") }, Ct);
+        var changes = await c.MapReadStreamAsync(new MapReadStreamRequest { Channel = ch, Limit = 10, SinceOffset = any!.State.Offset, SinceEpoch = any.State.Epoch }, Ct);
+        Assert.Equal(["k9"], changes.Entries.Select(e => e.Key));
+        var stale = await Assert.ThrowsAsync<CentApiException>(async () =>
+        {
+            await foreach (var _ in c.MapReadStateAllAsync(new MapReadStateRequest { Channel = ch, Limit = 2, RevisionOffset = 1, RevisionEpoch = "gone" }, Ct))
+            {
+            }
+        });
+        Assert.Equal(ErrorCodes.UnrecoverablePosition, stale.Code);
     }
 
     [Fact]
@@ -443,9 +530,9 @@ public sealed class IntegrationTests
         var user = Unique();
         var reg = await c.DeviceRegisterAsync(new DeviceRegisterRequest
         {
-            Provider = "webpush",
+            Provider = ProviderValues.WebPush,
             Token = WebpushToken(),
-            Platform = "web",
+            Platform = PlatformValues.Web,
             User = user,
             Meta = new Dictionary<string, string> { ["app"] = "csharpcent" },
             Topics = ["news"],
@@ -457,13 +544,22 @@ public sealed class IntegrationTests
         Assert.Equal(reg.Id, list.Items[0].Id);
         Assert.Equal("csharpcent", list.Items[0].Meta["app"]);
         Assert.Contains("news", list.Items[0].Topics);
-        await c.DeviceTopicUpdateAsync(new DeviceTopicUpdateRequest { DeviceId = reg.Id, Op = "add", Topics = ["sport"] }, Ct);
+        await c.DeviceTopicUpdateAsync(new DeviceTopicUpdateRequest { DeviceId = reg.Id, Op = OpValues.Add, Topics = ["sport"] }, Ct);
         var topics = await c.DeviceTopicListAsync(new DeviceTopicListRequest { Filter = new DeviceTopicFilter { DeviceIds = [reg.Id] }, IncludeTotalCount = true }, Ct);
         Assert.Equal(2, topics.TotalCount);
-        await c.DeviceUpdateAsync(new DeviceUpdateRequest { Ids = [reg.Id], MetaUpdate = new DeviceMetaUpdate { Meta = new Dictionary<string, string> { ["app"] = "updated" } } }, Ct);
+        await c.DeviceUpdateAsync(new DeviceUpdateRequest
+        {
+            Ids = [reg.Id],
+            MetaUpdate = new DeviceMetaUpdate { Meta = new Dictionary<string, string> { ["app"] = "updated" } },
+            TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "Europe/Berlin" },
+        }, Ct);
         list = await c.DeviceListAsync(new DeviceListRequest { Filter = ByUser(), IncludeMeta = true }, Ct);
-        Assert.Equal("updated", list.Items[0].Meta["app"]);
-        await c.UserTopicUpdateAsync(new UserTopicUpdateRequest { User = user, Op = "add", Topics = ["alerts"] }, Ct);
+        Assert.Equal(("updated", "Europe/Berlin"), (list.Items[0].Meta["app"], list.Items[0].Timezone));
+        // An empty update is sent, and clears it.
+        await c.DeviceUpdateAsync(new DeviceUpdateRequest { Ids = [reg.Id], TimezoneUpdate = new DeviceTimezoneUpdate { Timezone = "" } }, Ct);
+        list = await c.DeviceListAsync(new DeviceListRequest { Filter = ByUser() }, Ct);
+        Assert.Equal("", list.Items[0].Timezone);
+        await c.UserTopicUpdateAsync(new UserTopicUpdateRequest { User = user, Op = OpValues.Add, Topics = ["alerts"] }, Ct);
         var userTopics = await c.UserTopicListAsync(new UserTopicListRequest { Filter = new UserTopicFilter { Users = [user] } }, Ct);
         Assert.Equal(["alerts"], userTopics.Items.Select(i => i.Topic));
         var push = await c.SendPushNotificationAsync(new SendPushNotificationRequest
@@ -477,7 +573,7 @@ public sealed class IntegrationTests
         // Push status needs push analytics in ClickHouse: without it, the method is not available.
         try
         {
-            await c.UpdatePushStatusAsync(new UpdatePushStatusRequest { AnalyticsUid = push.Uid, Status = "delivered", DeviceId = reg.Id }, Ct);
+            await c.UpdatePushStatusAsync(new UpdatePushStatusRequest { AnalyticsUid = push.Uid, Status = StatusValues.Delivered, DeviceId = reg.Id }, Ct);
         }
         catch (CentApiException e)
         {
@@ -485,6 +581,60 @@ public sealed class IntegrationTests
         }
         await c.DeviceRemoveAsync(new DeviceRemoveRequest { Ids = [reg.Id] }, Ct);
         Assert.Empty((await c.DeviceListAsync(new DeviceListRequest { Filter = ByUser() }, Ct)).Items);
+    }
+
+    // Pushes with every part the checks before sending look into - rate and time limits -
+    // a device detached by an empty user update, devices read page by page. Each request
+    // sets exactly what the API requires, so a check stricter than Centrifugo's fails here.
+    [Fact]
+    public async Task ProPushParts()
+    {
+        await using var c = await Pro();
+        var user = Unique();
+        var ids = new List<string>();
+        for (var i = 0; i < 3; i++)
+        {
+            ids.Add((await c.DeviceRegisterAsync(new DeviceRegisterRequest { Provider = ProviderValues.WebPush, Platform = PlatformValues.Web, Token = WebpushToken(), User = user }, Ct)).Id);
+        }
+        try
+        {
+            var byUser = new DeviceFilter { Users = [user] };
+            var seen = new List<string>();
+            await foreach (var d in c.DeviceListAllAsync(new DeviceListRequest { Filter = byUser, Limit = 2 }, Ct))
+            {
+                seen.Add(d.Id);
+            }
+            Assert.Equal(ids.Order(), seen.Order());
+
+            PushLimitStrategy[] strategies =
+            [
+                new() { RateLimit = new PushRateLimitStrategy { Key = "device.id", Policies = [new RateLimitPolicy { Rate = 1, IntervalMs = 60000 }] } },
+                new() { TimeLimit = new PushTimeLimitStrategy { SendAfterTime = "09:00:00", SendBeforeTime = "21:00:00", NoTzSendNow = true } },
+            ];
+            foreach (var strategy in strategies)
+            {
+                var push = await c.SendPushNotificationAsync(new SendPushNotificationRequest
+                {
+                    Recipient = new PushRecipient { Filter = byUser },
+                    // Centrifugo needs ExpireAt with a limit strategy: a push the limits hold
+                    // back is not tried forever.
+                    Notification = new PushNotification { Webpush = new WebPushPushNotification { Payload = new { title = "hi" } }, ExpireAt = Now() + 7200 },
+                    LimitStrategy = strategy,
+                    SendAt = Now() + 3600,
+                }, Ct);
+                Assert.NotEmpty(push.Uid);
+                await c.CancelPushAsync(new CancelPushRequest { Uid = push.Uid }, Ct);
+            }
+
+            // An empty user update detaches the device.
+            await c.DeviceUpdateAsync(new DeviceUpdateRequest { Ids = [ids[0]], UserUpdate = new DeviceUserUpdate { User = "" } }, Ct);
+            var list = await c.DeviceListAsync(new DeviceListRequest { Filter = new DeviceFilter { Ids = [ids[0]] } }, Ct);
+            Assert.Equal("", Assert.Single(list.Items).User);
+        }
+        finally
+        {
+            await c.DeviceRemoveAsync(new DeviceRemoveRequest { Ids = ids }, CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -495,7 +645,7 @@ public sealed class IntegrationTests
         var batch = c.NewBatch();
         batch.UpdateUserStatus(new UpdateUserStatusRequest { Users = [user], State = "busy" });
         var status = batch.GetUserStatus(new GetUserStatusRequest { Users = [user] });
-        var reg = batch.DeviceRegister(new DeviceRegisterRequest { Provider = "webpush", Token = WebpushToken(), Platform = "web", User = user });
+        var reg = batch.DeviceRegister(new DeviceRegisterRequest { Provider = ProviderValues.WebPush, Token = WebpushToken(), Platform = PlatformValues.Web, User = user });
         var conns = batch.Connections(new ConnectionsRequest { User = user });
         await batch.SendAsync(Ct);
         Assert.Equal("busy", status.Result.Statuses[0].State);

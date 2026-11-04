@@ -204,7 +204,9 @@ public sealed class BroadcastBatchTests
     [Theory]
     [InlineData(0, null)]
     [InlineData(-1, null)]
-    [InlineData(2, -1)]
+    [InlineData(2, -1)] // Timeout.InfiniteTimeSpan: a call cannot be left unbounded
+    [InlineData(2, -5)]
+    [InlineData(2, 0)]
     public async Task InvalidRetryOptionsAreRefusedBeforeAnyAttempt(int maxAttempts, int? attemptTimeoutMs)
     {
         var fake = new FakeCentrifugo();
@@ -236,7 +238,7 @@ public sealed class BroadcastBatchTests
             o.TimeProvider = time;
             o.RequestTimeout = TimeSpan.FromSeconds(5);
         });
-        var e = await Assert.ThrowsAsync<CentRetryStoppedException>(() => client.BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions
+        var e = await Assert.ThrowsAsync<CentRetryStoppedException>(() => client.WithTimeout(TimeSpan.FromSeconds(5)).BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions
         {
             MaxAttempts = 5,
             OnAttemptError = _ =>
@@ -250,6 +252,39 @@ public sealed class BroadcastBatchTests
         Assert.Equal(1, Assert.IsType<BroadcastFailedChannelsException>(e.BroadcastError).Result.Channels[0].Attempts);
     }
 
+    public static TheoryData<bool> AloneAndAutoBatched => new() { false, true };
+
+    // AttemptTimeout is each attempt's own timeout: it replaces RequestTimeout, longer or
+    // shorter, while the call's token still ends an attempt sooner.
+    [Theory]
+    [MemberData(nameof(AloneAndAutoBatched))]
+    public async Task AttemptTimeoutReplacesRequestTimeout(bool autoBatch)
+    {
+        var fake = new FakeCentrifugo(r => Answer.After(TimeSpan.FromMilliseconds(300), Answer.Ok(FakeCentrifugo.DefaultReply(r))));
+        await using var client = fake.CreateClient(o =>
+        {
+            o.RequestTimeout = TimeSpan.FromMilliseconds(50);
+            if (autoBatch)
+            {
+                o.AutoBatch = new AutoBatchOptions { MaxInFlight = 1 };
+            }
+        });
+        // Longer than RequestTimeout: the attempt waits for the reply.
+        var result = await client.BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 1, AttemptTimeout = TimeSpan.FromSeconds(10) }, Ct);
+        Assert.Null(result.Channels[0].Error);
+
+        // Without one, RequestTimeout bounds each attempt.
+        await Assert.ThrowsAsync<CentTimeoutException>(() => client.BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 1 }, Ct));
+
+        // The call's token, ending before AttemptTimeout, ends it.
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(100));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 1, AttemptTimeout = TimeSpan.FromSeconds(10) }, cts.Token));
+
+        // So does the timeout of a client from WithTimeout, bounding the call as a whole.
+        await Assert.ThrowsAsync<CentTimeoutException>(() => client.WithTimeout(TimeSpan.FromMilliseconds(100)).BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 1, AttemptTimeout = TimeSpan.FromSeconds(10) }, Ct));
+    }
+
     [Fact]
     public async Task ADeadlinePassingInTheWaitStopsTheRetries()
     {
@@ -260,7 +295,7 @@ public sealed class BroadcastBatchTests
             o.TimeProvider = time;
             o.RequestTimeout = TimeSpan.FromSeconds(5);
         });
-        var call = client.BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 5, OnAttemptError = _ => TimeSpan.FromMinutes(1) }, Ct);
+        var call = client.WithTimeout(TimeSpan.FromSeconds(5)).BroadcastWithRetryAsync(Broadcast("a"), new BroadcastRetryOptions { MaxAttempts = 5, OnAttemptError = _ => TimeSpan.FromMinutes(1) }, Ct);
         while (!call.IsCompleted)
         {
             time.Advance(TimeSpan.FromSeconds(1));

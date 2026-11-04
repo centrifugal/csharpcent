@@ -9,8 +9,9 @@ namespace Centrifugal.Cent;
 /// </summary>
 /// <remarks>
 /// A success is a JSON object with <c>Cache-Control: no-store</c>. The function throws
-/// <see cref="EndpointUnauthorizedException"/> - also wrapped - to answer 403: client SDKs
-/// stop asking, and disconnect or unsubscribe. Any other exception answers 500, reported to
+/// <see cref="EndpointForbiddenException"/> - also wrapped - to answer 403: client SDKs
+/// stop asking, and disconnect or unsubscribe, reporting it as their
+/// <c>UnauthorizedError</c>. Any other exception answers 500, reported to
 /// <see cref="EndpointHandlerOptions.OnError"/>: client SDKs retry. A malformed request is a
 /// 400, also reported.
 /// </remarks>
@@ -20,7 +21,7 @@ namespace Centrifugal.Cent;
 /// app.MapCentrifugo("/centrifugo/connection_token", endpoints.ConnectionToken(context =>
 /// {
 ///     var user = context.Request.GetHttpContext().User.Identity?.Name // Centrifugal.Cent.AspNetCore
-///         ?? throw new EndpointUnauthorizedException();
+///         ?? throw new EndpointForbiddenException();
 ///     return Task.FromResult(Token.Connection(key, new ConnectionClaims { User = user, Expiry = Expiry.After(TimeSpan.FromMinutes(15)) }));
 /// }));
 /// </code>
@@ -130,7 +131,7 @@ public sealed class EndpointHandlers
             {
                 return await handle(request, new HandlerContext(request, cancellationToken)).ConfigureAwait(false);
             }
-            catch (Exception e) when (Responses.Find<EndpointUnauthorizedException>(e) is not null)
+            catch (Exception e) when (Responses.Find<EndpointForbiddenException>(e) is not null)
             {
                 return Responses.Text(403, "forbidden");
             }
@@ -175,21 +176,22 @@ public sealed class EndpointHandlerOptions
 }
 
 /// <summary>
-/// The request's user may not have what it asked for: the endpoint answers 403, and the
-/// client SDK stops asking - it disconnects or unsubscribes. Distinct from the API client's
-/// <see cref="CentUnauthorizedException"/>, which means Centrifugo refused the SDK's credentials.
+/// The request's user may not have what it asked for: the endpoint answers 403 Forbidden, and
+/// the client SDK stops asking - it disconnects or unsubscribes, reporting it as its own
+/// <c>UnauthorizedError</c>. Not the API client's <see cref="CentUnauthorizedException"/>,
+/// which means Centrifugo refused this server's credentials.
 /// </summary>
-public sealed class EndpointUnauthorizedException : Exception
+public sealed class EndpointForbiddenException : Exception
 {
     /// <summary>Creates the exception.</summary>
-    public EndpointUnauthorizedException()
-        : base("unauthorized")
+    public EndpointForbiddenException()
+        : base("forbidden")
     {
     }
 
     /// <summary>Creates the exception, saying why - for the application's logs; the client receives a plain 403.</summary>
     /// <param name="message">Why.</param>
-    public EndpointUnauthorizedException(string message)
+    public EndpointForbiddenException(string message)
         : base(message)
     {
     }

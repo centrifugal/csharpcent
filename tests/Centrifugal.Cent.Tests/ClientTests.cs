@@ -117,7 +117,7 @@ public sealed class ClientTests
         Assert.Equal("http://centrifugo.test/api/publish", r.Uri.ToString());
         Assert.Equal("key", r.Headers["X-API-Key"]);
         Assert.Equal("application/json", r.Headers["Content-Type"]);
-        Assert.Equal("csharpcent/0.2", r.Headers["User-Agent"]);
+        Assert.Equal("csharpcent/0.3", r.Headers["User-Agent"]);
         Assert.Equal("""{"channel":"news","data":{"text":"hi"}}""", r.Body);
     }
 
@@ -571,6 +571,25 @@ public sealed class ClientTests
         await client.CloseAsync(Ct);
         var empty = client.NewBatch();
         await Assert.ThrowsAsync<CentClosedException>(() => empty.SendAsync(Ct));
+    }
+
+    [Fact]
+    public async Task CloseCalledConcurrentlyEachWaitsForTheCallInProgress()
+    {
+        var release = new TaskCompletionSource();
+        var fake = new FakeCentrifugo(_ => Answer.When(release.Task, Answer.Ok("""{"result":{}}""")));
+        var client = fake.CreateClient();
+        var call = Task.Run(() => client.InfoAsync(new InfoRequest(), Ct), Ct);
+        while (fake.Requests.Count == 0)
+        {
+            await Task.Delay(5, Ct);
+        }
+        var closes = Enumerable.Range(0, 4).Select(_ => Task.Run(() => client.CloseAsync(Ct), Ct)).ToList();
+        await Task.Delay(50, Ct);
+        Assert.All(closes, c => Assert.False(c.IsCompleted));
+        release.SetResult();
+        await Task.WhenAll(closes);
+        Assert.True(call.IsCompletedSuccessfully);
     }
 
     [Fact]

@@ -29,7 +29,9 @@ namespace Centrifugal.Cent.Proxy;
 /// </para>
 /// <para>
 /// Keep proxy endpoints reachable by Centrifugo only: whoever can call them can claim to be
-/// any user.
+/// any user. Put them on a network only Centrifugo reaches, or behind a check of a secret
+/// header Centrifugo adds to every proxy request - the proxy's <c>static_headers</c> option -
+/// made before the handler; with TLS where the traffic leaves a trusted network.
 /// </para>
 /// </remarks>
 /// <example>

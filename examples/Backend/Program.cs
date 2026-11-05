@@ -4,7 +4,9 @@
 //
 // Centrifugo calls /centrifugo/connect as its connect proxy, and reads the public key at
 // /.well-known/jwks.json as client.token.jwks_public_endpoint; browsers get connection
-// tokens from /centrifugo/connection_token. Keep the proxy reachable by Centrifugo only.
+// tokens from /centrifugo/connection_token. Keep the proxy reachable by Centrifugo only: on a
+// network only Centrifugo reaches, or behind a check of a secret header from the proxy's
+// static_headers option; with TLS where the traffic leaves a trusted network.
 using System.Security.Cryptography;
 using Centrifugal.Cent;
 using Centrifugal.Cent.Tokens;

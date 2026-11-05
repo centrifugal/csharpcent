@@ -211,6 +211,29 @@ public sealed class AutoBatchTests
     }
 
     [Fact]
+    public async Task CallsQueuedWhenCloseIsCalledAreStillSent()
+    {
+        var gate = new Gate();
+        var fake = new FakeCentrifugo(gate.Hold);
+        var client = fake.CreateClient(o => o.AutoBatch = new AutoBatchOptions { MaxInFlight = 1 });
+        var first = client.PublishAsync(Publish("first"), Ct);
+        await gate.WaitForAsync(1);
+        var queued = Enumerable.Range(0, 4).Select(i => client.PublishAsync(Publish($"q{i}"), Ct)).ToList();
+        await Task.Delay(20, Ct);
+        var close = client.CloseAsync(Ct);
+        await Assert.ThrowsAsync<CentClosedException>(() => client.PublishAsync(Publish("late"), Ct));
+        gate.ReleaseOne();
+        await gate.WaitForAsync(1);
+        Assert.False(close.IsCompleted);
+        gate.ReleaseOne();
+        await close;
+        await first;
+        Assert.Equal(["q0", "q1", "q2", "q3"], (await Task.WhenAll(queued)).Select(r => r.Epoch));
+        Assert.Equal(2, fake.Requests.Count);
+        Assert.Equal(["publish", "publish", "publish", "publish"], fake.Requests[1].BatchMethods());
+    }
+
+    [Fact]
     public async Task CloseWaitsForBatchesWhoseCallersLeft()
     {
         var gate = new Gate();

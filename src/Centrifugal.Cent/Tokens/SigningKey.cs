@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Centrifugal.Cent.Tokens;
 
 /// <summary>
-/// A key signing tokens (spec 11.1): an HMAC secret (HS256), an RSA private key (RS256),
+/// A key signing tokens (spec 11.1): an HMAC secret (HS256), an RSA private key of 2048 bits or more (RS256),
 /// an ECDSA private key on P-256, P-384 or P-521 (ES256, ES384, ES512), or an Ed25519
 /// private key (EdDSA). A key may carry an ID, written as the token header's <c>kid</c>:
 /// required for JWKS and for Centrifugo PRO's API tokens.
@@ -27,6 +27,9 @@ namespace Centrifugal.Cent.Tokens;
 /// </remarks>
 public sealed class SigningKey
 {
+    /// <summary>The smallest RSA key signing tokens (spec 11.1).</summary>
+    private const int MinRsaBits = 2048;
+
     private readonly byte[]? _secret;
     private readonly RSA? _rsa;
     private readonly ECDsa? _ecdsa;
@@ -80,8 +83,13 @@ public sealed class SigningKey
         return new SigningKey("HS256", keyId, secret: secret.ToArray());
     }
 
-    /// <summary>An RSA private key: Centrifugo verifies with <c>client.token.rsa_public_key</c>, or JWKS.</summary>
-    /// <param name="key">The private key; the caller keeps owning it.</param>
+    /// <summary>
+    /// An RSA private key of 2048 bits or more: Centrifugo verifies with
+    /// <c>client.token.rsa_public_key</c>, or JWKS. A smaller key is refused, as an ECDSA key
+    /// on another curve is: 2048 bits is the floor of NIST SP 800-131A, and the default of
+    /// key generators.
+    /// </summary>
+    /// <param name="key">The private key, of 2048 bits or more; the caller keeps owning it.</param>
     /// <param name="keyId">The key's ID, if any.</param>
     /// <returns>The key.</returns>
     public static SigningKey Rsa(RSA key, string? keyId = null)
@@ -90,6 +98,10 @@ public sealed class SigningKey
         if (!HasPrivate(() => key.ExportParameters(true)))
         {
             throw new ArgumentException("an RSA public key: signing needs the private key", nameof(key));
+        }
+        if (key.KeySize < MinRsaBits)
+        {
+            throw new ArgumentException($"an RSA key of {key.KeySize} bits: tokens need {MinRsaBits} or more", nameof(key));
         }
         return new SigningKey("RS256", keyId, rsa: key);
     }
@@ -151,11 +163,11 @@ public sealed class SigningKey
         ArgumentNullException.ThrowIfNull(pem);
         if (pem.Contains("BEGIN RSA PRIVATE KEY", StringComparison.Ordinal))
         {
-            return Rsa(ImportRsa(pem), keyId);
+            return Owned(ImportRsa(pem), k => Rsa(k, keyId));
         }
         if (pem.Contains("BEGIN EC PRIVATE KEY", StringComparison.Ordinal))
         {
-            return ECDsa(ImportEc(pem), keyId);
+            return Owned(ImportEc(pem), k => ECDsa(k, keyId));
         }
         if (!pem.Contains("BEGIN PRIVATE KEY", StringComparison.Ordinal))
         {
@@ -163,14 +175,14 @@ public sealed class SigningKey
         }
         try
         {
-            return Rsa(ImportRsa(pem), keyId);
+            return Owned(ImportRsa(pem), k => Rsa(k, keyId));
         }
         catch (CryptographicException)
         {
         }
         try
         {
-            return ECDsa(ImportEc(pem), keyId);
+            return Owned(ImportEc(pem), k => ECDsa(k, keyId));
         }
         catch (CryptographicException)
         {
@@ -178,6 +190,21 @@ public sealed class SigningKey
         throw new ArgumentException(
             "a PKCS#8 key which is neither RSA nor ECDSA: for Ed25519, .NET has no implementation - use SigningKey.Ed25519 with a library's signing function",
             nameof(pem));
+    }
+
+    /// <summary>Makes a key of one imported from PEM, disposing of it when it is refused.</summary>
+    private static SigningKey Owned<T>(T imported, Func<T, SigningKey> make)
+        where T : IDisposable
+    {
+        try
+        {
+            return make(imported);
+        }
+        catch
+        {
+            imported.Dispose();
+            throw;
+        }
     }
 
     private static RSA ImportRsa(string pem)

@@ -31,7 +31,7 @@ dotnet add package Centrifugal.Cent.AspNetCore   # serving handlers with ASP.NET
 
 csharpcent implements the [Centrifugo server SDK
 specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.3, whose reference implementation is
+version 0.4, whose reference implementation is
 [gocent](https://github.com/centrifugal/gocent).
 
 ## Example
@@ -517,7 +517,9 @@ var client = new CentClient(new CentClientOptions
 `CloseAsync` refuses new calls with `CentClosedException`, waits for those in
 progress - automatic batches whose callers left included - and then closes the
 idle connections. Its `CancellationToken` ends the wait, leaving the calls to go
-on; it may be called again. `DisposeAsync` closes the client too, and a client of
+on; it may be called again, concurrently too, each call waiting the same way.
+A broadcast retry stops at its next attempt, which fails with
+`CentClosedException`. `DisposeAsync` closes the client too, and a client of
 `AddCentClient` is closed when the application stops.
 
 ## HTTP handlers
@@ -585,7 +587,16 @@ API's (`PublishRequest`, `SubscribeResult`), so a file using both refers to them
 as `Proxy.PublishRequest`, with `using Proxy = Centrifugal.Cent.Proxy;`.
 
 Keep proxy endpoints reachable by Centrifugo only: whoever can call them can
-claim to be any user.
+claim to be any user. The ways to do it:
+
+- a network only Centrifugo reaches;
+- a secret header Centrifugo adds to every proxy request - the proxy's
+  `static_headers` option - which the application checks before the handler,
+  in a middleware or an endpoint filter;
+- TLS where the traffic leaves a trusted network.
+
+The handler's body limit and the deadline it passes on are its own share of the
+protection.
 
 ## Tokens
 
@@ -602,10 +613,11 @@ var token = Token.Connection(key, new ConnectionClaims
 var subscription = Token.Subscription(key, new SubscriptionClaims { User = "42", Channel = "news", Expiry = Expiry.At(end) });
 ```
 
-Keys: `SigningKey.Hmac` (HS256), `Rsa` (RS256), `ECDsa` on P-256, P-384 or P-521
-(ES256, ES384, ES512), `FromPem` for RSA and ECDSA private keys, and `Ed25519`
-(EdDSA). A token's `Expiry` is required - a time, or `Expiry.Never` chosen
-explicitly. `ConnectionExpiry` and `SubscriptionExpiry` set when the connection
+Keys: `SigningKey.Hmac` (HS256), `Rsa` of 2048 bits or more (RS256), `ECDsa` on
+P-256, P-384 or P-521 (ES256, ES384, ES512), `FromPem` for RSA and ECDSA private
+keys, and `Ed25519` (EdDSA). A smaller RSA key, or an ECDSA key on another curve,
+is refused there. A token's `Expiry` is required - a time, or `Expiry.Never`
+chosen explicitly. `ConnectionExpiry` and `SubscriptionExpiry` set when the connection
 or subscription expires, if not at the token's expiry. A connection token's
 `Meta` is not visible to other clients, but the user owning the token can decode
 it: never put in it what that user must not see. A subscription token's `User`

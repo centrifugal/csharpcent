@@ -124,7 +124,9 @@ public partial class CentClient : IAsyncDisposable, IDisposable
     /// <summary>
     /// Refuses new calls with <see cref="CentClosedException"/> and waits for those in
     /// progress - batches whose callers left included - then closes the idle connections of
-    /// the client's own HTTP client. It may be called again.
+    /// the client's own HTTP client. It may be called again, concurrently too: each call
+    /// waits the same way. A broadcast retry stops at its next attempt, which fails with
+    /// <see cref="CentClosedException"/>.
     /// </summary>
     /// <param name="cancellationToken">Ends the wait, leaving the calls in progress to go on.</param>
     /// <returns>A task completed when every call has ended.</returns>

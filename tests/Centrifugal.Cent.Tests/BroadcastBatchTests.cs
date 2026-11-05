@@ -152,6 +152,30 @@ public sealed class BroadcastBatchTests
     }
 
     [Fact]
+    public async Task CloseStopsARetryAtItsNextAttemptWithClosed()
+    {
+        var fake = new FakeCentrifugo(r => Answer.Ok(Responses(r, ch => ch == "b" ? 100 : null)));
+        var client = fake.CreateClient();
+        Task? close = null;
+        var e = await Assert.ThrowsAsync<BroadcastFailedChannelsException>(() => client.BroadcastWithRetryAsync(Broadcast("a", "b"), new BroadcastRetryOptions
+        {
+            MaxAttempts = 10,
+            OnAttemptError = _ =>
+            {
+                close = client.CloseAsync(Ct);
+                return TimeSpan.FromMilliseconds(20);
+            },
+        }, Ct));
+        Assert.Single(fake.Requests);
+        var b = Assert.Single(e.Failed);
+        Assert.Equal("b", b.Channel);
+        Assert.IsType<CentClosedException>(b.Error);
+        Assert.False(Retry.IsRetryable(e));
+        Assert.NotNull(close);
+        await close;
+    }
+
+    [Fact]
     public async Task RetryKeepsTheRequestsKeyAndSucceeds()
     {
         var attempt = 0;

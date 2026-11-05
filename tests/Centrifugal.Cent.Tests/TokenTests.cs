@@ -191,6 +191,19 @@ public sealed class TokenTests
     }
 
     [Fact]
+    public void RsaKeysUnder2048BitsAreRefusedAsOtherCurvesAre()
+    {
+        // Refused where an ECDSA key on another curve is, with the same error: so no
+        // connection, subscription or API token, nor JWKS, is ever signed with one.
+        using var small = RSA.Create(1024);
+        Assert.Contains("1024 bits", Assert.Throws<ArgumentException>(() => SigningKey.Rsa(small, "r")).Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => SigningKey.FromPem(small.ExportRSAPrivateKeyPem()));
+        Assert.Throws<ArgumentException>(() => SigningKey.FromPem(small.ExportPkcs8PrivateKeyPem(), "r"));
+        using var smallest = RSA.Create(2048);
+        Assert.Equal("RS256", SigningKey.Rsa(smallest).Algorithm);
+    }
+
+    [Fact]
     public void KeysComeFromPem()
     {
         using var rsa = RSA.Create(2048);

@@ -4,6 +4,41 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+Implements the [Centrifugo server SDK
+specification](https://github.com/centrifugal/gocent/blob/master/spec.md) 0.4.
+
+### Changed (breaking)
+
+- An RSA key under 2048 bits is refused, as an ECDSA key on a curve other than
+  P-256, P-384 and P-521 is: `SigningKey.Rsa` and `SigningKey.FromPem` throw
+  `ArgumentException`, so no connection, subscription or API token, nor JWKS,
+  is made with one. 2048 bits is the floor of NIST SP 800-131A and the default
+  of key generators. A configuration with a smaller key, which worked in 0.2.0,
+  fails at start: generate a key of 2048 bits or more, and publish its public
+  key to Centrifugo.
+- The `User-Agent` is `csharpcent/0.3`.
+
+### Fixed
+
+- `SigningKey.FromPem` disposes of the key it imported when it refuses it.
+
+### Documentation
+
+- The proxy docs name the ways to keep proxy endpoints reachable by Centrifugo
+  only: a network only Centrifugo reaches; a secret header Centrifugo adds to
+  every proxy request through the proxy's `static_headers` option, checked by
+  the application before the handler; TLS where the traffic leaves a trusted
+  network.
+
+### Tests
+
+- Shutdown: `CloseAsync` called concurrently, each call waiting for the call in
+  progress; calls queued for an automatic batch when `CloseAsync` is called
+  still sent; a broadcast retry stopping at its next attempt with
+  `CentClosedException`.
+
 ## [0.2.0]
 
 Implements the [Centrifugo server SDK
@@ -127,5 +162,6 @@ for Centrifugo v6.
   `Pending.FromResult` and `Pending.FromException` make commands' outcomes.
 - .NET 8 and newer; trimming and native AOT.
 
+[0.3.0]: https://github.com/centrifugal/csharpcent/releases/tag/v0.3.0
 [0.2.0]: https://github.com/centrifugal/csharpcent/releases/tag/v0.2.0
 [0.1.0]: https://github.com/centrifugal/csharpcent/releases/tag/v0.1.0

@@ -3,7 +3,7 @@
 csharpcent - the packages `Centrifugal.Cent` and `Centrifugal.Cent.AspNetCore` -
 is the .NET SDK for Centrifugo's HTTP server API, written to the [Centrifugo
 server SDK specification](https://github.com/centrifugal/gocent/blob/master/spec.md),
-version 0.3, whose reference implementation is gocent. Applications call it on
+version 0.4, whose reference implementation is gocent. Applications call it on
 their hot paths, from many requests at once, so it has to be correct under
 concurrency and hard to misuse. Read this before changing code.
 
